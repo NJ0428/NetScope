@@ -2,7 +2,7 @@ from PySide6.QtCore import Qt, QAbstractTableModel, QModelIndex
 
 from netscope.models.session import SessionEntry, SessionState
 
-COLUMNS = ["#", "Method", "Status", "Host", "Path", "Content-Type", "Size", "Time"]
+COLUMNS = ["#", "Result", "Protocol", "Host", "URL"]
 
 
 class SessionTableModel(QAbstractTableModel):
@@ -32,26 +32,29 @@ class SessionTableModel(QAbstractTableModel):
         if role == Qt.ItemDataRole.DisplayRole:
             match col:
                 case 0: return session.id
-                case 1: return session.method
-                case 2: return session.status_code if session.status_code else "-"
+                case 1: return session.status_code if session.status_code else "…"
+                case 2: return session.scheme.upper()
                 case 3: return session.host
                 case 4: return session.path
-                case 5: return session.content_type or "-"
-                case 6: return session.size_display
-                case 7: return session.time_display
 
         if role == Qt.ItemDataRole.ForegroundRole:
             from PySide6.QtGui import QColor
-            if session.state == SessionState.ERROR:
+            if session.state == SessionState.ERROR or (col == 1 and session.status_code >= 500):
                 return QColor("#e74c3c")
-            if col == 2 and session.status_code >= 400:
-                return QColor("#e74c3c")
-            if col == 2 and session.status_code >= 300:
+            if col == 1 and session.status_code >= 400:
+                return QColor("#f39c12")
+            if col == 1 and session.status_code >= 300:
+                return QColor("#3498db")
+            if col == 1 and session.status_code >= 200:
+                return QColor("#2ecc71")
+            if col == 2 and session.scheme == "https":
+                return QColor("#2ecc71")
+            if col == 2 and session.scheme == "http":
                 return QColor("#f39c12")
 
         if role == Qt.ItemDataRole.TextAlignmentRole:
-            if col in (0, 2, 6, 7):
-                return int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            if col in (0, 1):
+                return int(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
 
         return None
 

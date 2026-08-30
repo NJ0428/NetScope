@@ -5,30 +5,32 @@ from netscope.models.session_table_model import SessionTableModel
 
 
 class SessionFilterProxy(QSortFilterProxyModel):
-    """Filters sessions by search text across host, path, and method."""
-
     def __init__(self, parent=None):
         super().__init__(parent)
         self._filter_text = ""
+        self._process_filter = ""
 
     def set_filter_text(self, text: str):
         self._filter_text = text.lower()
         self.invalidateFilter()
 
+    def set_process_filter(self, text: str):
+        self._process_filter = text.lower()
+        self.invalidateFilter()
+
     def filterAcceptsRow(self, source_row, source_parent):
-        if not self._filter_text:
-            return True
         model = self.sourceModel()
         session = model.get_session(source_row)
         if session is None:
             return False
-        searchable = f"{session.method} {session.host} {session.path} {session.status_code}".lower()
-        return self._filter_text in searchable
+        if self._filter_text:
+            searchable = f"{session.scheme} {session.host} {session.path} {session.status_code}".lower()
+            if self._filter_text not in searchable:
+                return False
+        return True
 
 
 class SessionTableView(QTableView):
-    """Table view for captured sessions."""
-
     session_selected = Signal(int)  # row in source model
 
     def __init__(self, model: SessionTableModel, parent=None):
@@ -47,36 +49,40 @@ class SessionTableView(QTableView):
         self.setSortingEnabled(True)
 
         header = self.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         header.setStretchLastSection(True)
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
-        self.setColumnWidth(0, 50)   # #
-        self.setColumnWidth(1, 70)   # Method
-        self.setColumnWidth(2, 60)   # Status
-        self.setColumnWidth(3, 180)  # Host
-        self.setColumnWidth(5, 160)  # Content-Type
-        self.setColumnWidth(6, 80)   # Size
-        self.setColumnWidth(7, 80)   # Time
+        self.setColumnWidth(0, 45)    # #
+        self.setColumnWidth(1, 55)    # Result
+        self.setColumnWidth(2, 65)    # Protocol
+        self.setColumnWidth(3, 180)   # Host
+        # URL stretches
 
         self.setStyleSheet("""
             QTableView {
                 background-color: #1e1e1e;
                 color: #d4d4d4;
-                gridline-color: #333;
+                gridline-color: #2a2a2a;
                 font-size: 12px;
+                border: none;
+            }
+            QTableView::item {
+                padding: 3px 6px;
             }
             QTableView::item:selected {
                 background-color: #264f78;
+                color: #ffffff;
             }
             QTableView::item:alternate {
                 background-color: #252526;
             }
             QHeaderView::section {
-                background-color: #2d2d2d;
-                color: #d4d4d4;
-                padding: 4px;
-                border: 1px solid #3e3e3e;
+                background-color: #252526;
+                color: #9d9d9d;
+                padding: 5px 6px;
+                border: none;
+                border-right: 1px solid #3e3e3e;
+                border-bottom: 1px solid #3e3e3e;
+                font-size: 11px;
                 font-weight: bold;
             }
         """)
