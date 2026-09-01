@@ -1,4 +1,5 @@
 from PySide6.QtCore import Qt, Slot
+from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QFrame, QLabel, QMainWindow, QSplitter, QStackedWidget,
     QStatusBar, QVBoxLayout, QWidget,
@@ -28,8 +29,73 @@ class MainWindow(QMainWindow):
         self._engine: ProxyEngine = StubProxyEngine(self)
 
         self._setup_ui()
+        self._setup_menu()
         self._connect_signals()
         self._apply_global_style()
+
+    # ── Menu bar ──────────────────────────────────────────────────────────────
+
+    def _setup_menu(self):
+        mb = self.menuBar()
+
+        # File
+        file_menu = mb.addMenu("File")
+        file_menu.addAction(QAction("New Session", self, shortcut=QKeySequence.StandardKey.New))
+        file_menu.addAction(QAction("Open...", self, shortcut=QKeySequence.StandardKey.Open))
+        file_menu.addAction(QAction("Save", self, shortcut=QKeySequence.StandardKey.Save))
+        file_menu.addAction(QAction("Save As...", self, shortcut=QKeySequence("Ctrl+Shift+S")))
+        file_menu.addSeparator()
+        file_menu.addAction(QAction("Import...", self))
+        file_menu.addAction(QAction("Export...", self))
+        file_menu.addSeparator()
+        act_quit = QAction("Quit", self, shortcut=QKeySequence.StandardKey.Quit)
+        act_quit.triggered.connect(self.close)
+        file_menu.addAction(act_quit)
+
+        # Edit
+        edit_menu = mb.addMenu("Edit")
+        edit_menu.addAction(QAction("Find", self, shortcut=QKeySequence.StandardKey.Find))
+        edit_menu.addSeparator()
+        edit_menu.addAction(QAction("Copy", self, shortcut=QKeySequence.StandardKey.Copy))
+        edit_menu.addAction(QAction("Select All", self, shortcut=QKeySequence.StandardKey.SelectAll))
+        edit_menu.addSeparator()
+        edit_menu.addAction(QAction("Preferences...", self))
+
+        # Rules
+        rules_menu = mb.addMenu("Rules")
+        rules_menu.addAction(QAction("Manage Rules...", self))
+        rules_menu.addSeparator()
+        rules_menu.addAction(QAction("Enable Breakpoints", self))
+        rules_menu.addAction(QAction("Automatic Breakpoints", self))
+        rules_menu.addSeparator()
+        rules_menu.addAction(QAction("Custom Rules...", self))
+
+        # Tools
+        tools_menu = mb.addMenu("Tools")
+        tools_menu.addAction(QAction("Options...", self))
+        tools_menu.addSeparator()
+        tools_menu.addAction(QAction("Certificate Manager", self))
+        tools_menu.addAction(QAction("Proxy Settings...", self))
+        tools_menu.addSeparator()
+        tools_menu.addAction(QAction("WinConfig", self))
+
+        # View
+        view_menu = mb.addMenu("View")
+        act_toolbar = QAction("Toolbar", self, checkable=True, checked=True)
+        act_toolbar.triggered.connect(lambda v: self._toolbar.setVisible(v))
+        view_menu.addAction(act_toolbar)
+        act_status = QAction("Status Bar", self, checkable=True, checked=True)
+        act_status.triggered.connect(lambda v: self._status_bar.setVisible(v))
+        view_menu.addAction(act_status)
+        view_menu.addSeparator()
+        view_menu.addAction(QAction("Reset Layout", self))
+
+        # Help
+        help_menu = mb.addMenu("Help")
+        help_menu.addAction(QAction("Documentation", self))
+        help_menu.addAction(QAction("Keyboard Shortcuts", self))
+        help_menu.addSeparator()
+        help_menu.addAction(QAction("About NetScope", self))
 
     # ── UI construction ───────────────────────────────────────────────────────
 
@@ -159,6 +225,46 @@ class MainWindow(QMainWindow):
             QMainWindow, QWidget {
                 background-color: #1e1e1e;
                 color: #d4d4d4;
+            }
+            QMenuBar {
+                background-color: #2d2d2d;
+                color: #d4d4d4;
+                border-bottom: 1px solid #333;
+                padding: 2px 4px;
+                font-size: 13px;
+            }
+            QMenuBar::item {
+                background: transparent;
+                padding: 4px 10px;
+                border-radius: 3px;
+            }
+            QMenuBar::item:selected {
+                background-color: #3a3a3a;
+            }
+            QMenuBar::item:pressed {
+                background-color: #007acc;
+            }
+            QMenu {
+                background-color: #252526;
+                color: #d4d4d4;
+                border: 1px solid #454545;
+                padding: 4px 0;
+                font-size: 13px;
+            }
+            QMenu::item {
+                padding: 5px 24px;
+            }
+            QMenu::item:selected {
+                background-color: #094771;
+                color: #ffffff;
+            }
+            QMenu::item:disabled {
+                color: #666;
+            }
+            QMenu::separator {
+                height: 1px;
+                background: #3a3a3a;
+                margin: 4px 8px;
             }
             QSplitter::handle {
                 background-color: #2d2d2d;
