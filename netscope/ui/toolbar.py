@@ -1,7 +1,17 @@
-from PySide6.QtCore import Signal
+from pathlib import Path
+
+from PySide6.QtCore import QSize, Signal
+from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import (
     QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton, QWidget,
 )
+
+_IMG_DIR = Path(__file__).parent.parent / "resources" / "img"
+
+
+def _icon(name: str, size: int = 16) -> QIcon:
+    path = _IMG_DIR / name / f"{name}_{size}x{size}.png"
+    return QIcon(str(path))
 
 _BTN = (
     "QPushButton {{ background-color: {bg}; color: white; border: none; "
@@ -28,12 +38,16 @@ class Toolbar(QWidget):
         layout.setContentsMargins(8, 4, 8, 4)
         layout.setSpacing(6)
 
-        self._btn_start = QPushButton("▶  Start")
+        self._btn_start = QPushButton("Start")
+        self._btn_start.setIcon(_icon("capture", 16))
+        self._btn_start.setIconSize(QSize(16, 16))
         self._btn_start.setFixedWidth(90)
         self._btn_start.setStyleSheet(_BTN.format(bg="#27ae60", hover="#2ecc71"))
         self._btn_start.clicked.connect(self.start_clicked)
 
-        self._btn_stop = QPushButton("■  Stop")
+        self._btn_stop = QPushButton("Stop")
+        self._btn_stop.setIcon(_icon("stop", 16))
+        self._btn_stop.setIconSize(QSize(16, 16))
         self._btn_stop.setFixedWidth(90)
         self._btn_stop.setEnabled(False)
         self._btn_stop.setStyleSheet(_BTN.format(bg="#e74c3c", hover="#c0392b"))
@@ -44,7 +58,8 @@ class Toolbar(QWidget):
         layout.addWidget(_separator())
 
         # Search
-        search_icon = QLabel("🔍")
+        search_icon = QLabel()
+        search_icon.setPixmap(QPixmap(str(_IMG_DIR / "find" / "find_16x16.png")))
         self._search = QLineEdit()
         self._search.setPlaceholderText("Filter sessions…")
         self._search.setClearButtonEnabled(True)
@@ -91,7 +106,9 @@ class Toolbar(QWidget):
         layout.addWidget(_separator())
 
         self._btn_clear = QPushButton("Clear")
-        self._btn_clear.setFixedWidth(70)
+        self._btn_clear.setIcon(_icon("clear", 16))
+        self._btn_clear.setIconSize(QSize(16, 16))
+        self._btn_clear.setFixedWidth(80)
         self._btn_clear.setStyleSheet(_BTN.format(bg="#444", hover="#555"))
         self._btn_clear.clicked.connect(self.clear_clicked)
         layout.addWidget(self._btn_clear)
