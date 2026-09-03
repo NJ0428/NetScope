@@ -23,7 +23,7 @@ class WelcomePanel(QWidget):
         subtitle = QLabel("Network Traffic Inspector")
         subtitle.setFont(QFont("Segoe UI", 13))
         subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        subtitle.setStyleSheet("color: #888;")
+        subtitle.setStyleSheet("color: #666666;")
 
         hint = QLabel(
             "Press  ▶ Start  to begin capturing traffic.\n"
@@ -31,7 +31,7 @@ class WelcomePanel(QWidget):
         )
         hint.setFont(QFont("Segoe UI", 11))
         hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        hint.setStyleSheet("color: #555; margin-top: 24px; line-height: 1.8;")
+        hint.setStyleSheet("color: #444444; margin-top: 24px; line-height: 1.8;")
 
         layout.addStretch()
         layout.addWidget(icon)

@@ -64,7 +64,7 @@ class Toolbar(QWidget):
         self._search.setPlaceholderText("Filter sessions…")
         self._search.setClearButtonEnabled(True)
         self._search.setStyleSheet(
-            "QLineEdit { background: #2d2d2d; color: #d4d4d4; border: 1px solid #3e3e3e; "
+            "QLineEdit { background: #ffffff; color: #1e1e1e; border: 1px solid #cccccc; "
             "padding: 4px 8px; border-radius: 3px; font-size: 12px; }"
             "QLineEdit:focus { border-color: #007acc; }"
         )
@@ -76,16 +76,16 @@ class Toolbar(QWidget):
 
         # Process filter
         process_label = QLabel("Process:")
-        process_label.setStyleSheet("color: #888; font-size: 11px;")
+        process_label.setStyleSheet("color: #666666; font-size: 11px;")
         self._process_combo = QComboBox()
         self._process_combo.addItems(["All Processes", "chrome.exe", "firefox.exe", "python.exe", "node.exe"])
         self._process_combo.setFixedWidth(150)
         self._process_combo.setStyleSheet(
-            "QComboBox { background: #2d2d2d; color: #d4d4d4; border: 1px solid #3e3e3e; "
+            "QComboBox { background: #ffffff; color: #1e1e1e; border: 1px solid #cccccc; "
             "padding: 4px 8px; border-radius: 3px; font-size: 12px; }"
             "QComboBox::drop-down { border: none; width: 20px; }"
-            "QComboBox QAbstractItemView { background: #2d2d2d; color: #d4d4d4; "
-            "selection-background-color: #264f78; border: 1px solid #3e3e3e; }"
+            "QComboBox QAbstractItemView { background: #ffffff; color: #1e1e1e; "
+            "selection-background-color: #0078d4; border: 1px solid #cccccc; }"
         )
         self._process_combo.currentTextChanged.connect(self.process_changed)
 
@@ -95,7 +95,7 @@ class Toolbar(QWidget):
 
         # Decode
         decode_label = QLabel("Decode:")
-        decode_label.setStyleSheet("color: #888; font-size: 11px;")
+        decode_label.setStyleSheet("color: #666666; font-size: 11px;")
         self._decode_combo = QComboBox()
         self._decode_combo.addItems(["Auto", "UTF-8", "Base64", "Hex", "Raw"])
         self._decode_combo.setFixedWidth(90)
@@ -109,7 +109,7 @@ class Toolbar(QWidget):
         self._btn_clear.setIcon(_icon("clear", 16))
         self._btn_clear.setIconSize(QSize(16, 16))
         self._btn_clear.setFixedWidth(80)
-        self._btn_clear.setStyleSheet(_BTN.format(bg="#444", hover="#555"))
+        self._btn_clear.setStyleSheet(_BTN.format(bg="#888888", hover="#666666"))
         self._btn_clear.clicked.connect(self.clear_clicked)
         layout.addWidget(self._btn_clear)
 
@@ -122,5 +122,5 @@ def _separator() -> QFrame:
     f = QFrame()
     f.setFrameShape(QFrame.Shape.VLine)
     f.setFixedWidth(1)
-    f.setStyleSheet("background-color: #3e3e3e;")
+    f.setStyleSheet("background-color: #dddddd;")
     return f

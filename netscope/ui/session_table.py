@@ -59,9 +59,9 @@ class SessionTableView(QTableView):
 
         self.setStyleSheet("""
             QTableView {
-                background-color: #1e1e1e;
-                color: #d4d4d4;
-                gridline-color: #2a2a2a;
+                background-color: #ffffff;
+                color: #1e1e1e;
+                gridline-color: #e0e0e0;
                 font-size: 12px;
                 border: none;
             }
@@ -69,19 +69,19 @@ class SessionTableView(QTableView):
                 padding: 3px 6px;
             }
             QTableView::item:selected {
-                background-color: #264f78;
+                background-color: #0078d4;
                 color: #ffffff;
             }
             QTableView::item:alternate {
-                background-color: #252526;
+                background-color: #f5f5f5;
             }
             QHeaderView::section {
-                background-color: #252526;
-                color: #9d9d9d;
+                background-color: #f0f0f0;
+                color: #555555;
                 padding: 5px 6px;
                 border: none;
-                border-right: 1px solid #3e3e3e;
-                border-bottom: 1px solid #3e3e3e;
+                border-right: 1px solid #dddddd;
+                border-bottom: 1px solid #dddddd;
                 font-size: 11px;
                 font-weight: bold;
             }
