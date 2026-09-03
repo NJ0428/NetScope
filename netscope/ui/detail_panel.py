@@ -54,7 +54,7 @@ class DetailPanel(QWidget):
         edit = QTextEdit()
         edit.setReadOnly(True)
         edit.setFont(QFont("Consolas", 10))
-        edit.setStyleSheet("QTextEdit { background-color: #1e1e1e; color: #d4d4d4; }")
+        edit.setStyleSheet("QTextEdit { background-color: #ffffff; color: #1e1e1e; }")
         return edit
 
     def show_session(self, session: SessionEntry):

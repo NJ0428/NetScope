@@ -176,7 +176,7 @@ class MainWindow(QMainWindow):
     def _on_start(self):
         self._toolbar.set_capturing(True)
         self._cap_label.setText(_STATUS_CAPTURE)
-        self._cap_label.setStyleSheet("color: #2ecc71; font-weight: bold;")
+        self._cap_label.setStyleSheet("color: #27ae60; font-weight: bold;")
         self._engine.start(self._proxy_port)
 
     @Slot()
@@ -184,7 +184,7 @@ class MainWindow(QMainWindow):
         self._engine.stop()
         self._toolbar.set_capturing(False)
         self._cap_label.setText(_STATUS_IDLE)
-        self._cap_label.setStyleSheet("color: #888;")
+        self._cap_label.setStyleSheet("color: #666666;")
 
     @Slot()
     def _on_clear(self):
@@ -223,13 +223,13 @@ class MainWindow(QMainWindow):
     def _apply_global_style(self):
         self.setStyleSheet("""
             QMainWindow, QWidget {
-                background-color: #1e1e1e;
-                color: #d4d4d4;
+                background-color: #ffffff;
+                color: #1e1e1e;
             }
             QMenuBar {
-                background-color: #2d2d2d;
-                color: #d4d4d4;
-                border-bottom: 1px solid #333;
+                background-color: #f3f3f3;
+                color: #1e1e1e;
+                border-bottom: 1px solid #cccccc;
                 padding: 2px 4px;
                 font-size: 13px;
             }
@@ -239,15 +239,15 @@ class MainWindow(QMainWindow):
                 border-radius: 3px;
             }
             QMenuBar::item:selected {
-                background-color: #3a3a3a;
+                background-color: #e0e0e0;
             }
             QMenuBar::item:pressed {
                 background-color: #007acc;
             }
             QMenu {
-                background-color: #252526;
-                color: #d4d4d4;
-                border: 1px solid #454545;
+                background-color: #ffffff;
+                color: #1e1e1e;
+                border: 1px solid #cccccc;
                 padding: 4px 0;
                 font-size: 13px;
             }
@@ -255,19 +255,19 @@ class MainWindow(QMainWindow):
                 padding: 5px 24px;
             }
             QMenu::item:selected {
-                background-color: #094771;
+                background-color: #0078d4;
                 color: #ffffff;
             }
             QMenu::item:disabled {
-                color: #666;
+                color: #aaaaaa;
             }
             QMenu::separator {
                 height: 1px;
-                background: #3a3a3a;
+                background: #cccccc;
                 margin: 4px 8px;
             }
             QSplitter::handle {
-                background-color: #2d2d2d;
+                background-color: #e0e0e0;
             }
             QStatusBar {
                 background-color: #007acc;
@@ -280,32 +280,32 @@ class MainWindow(QMainWindow):
             }
             QTabWidget::pane {
                 border: none;
-                background-color: #1e1e1e;
+                background-color: #ffffff;
             }
             QTabBar::tab {
-                background-color: #252526;
-                color: #888;
+                background-color: #f0f0f0;
+                color: #666666;
                 padding: 7px 18px;
                 border: none;
                 border-top: 2px solid transparent;
                 font-size: 12px;
             }
             QTabBar::tab:selected {
-                background-color: #1e1e1e;
-                color: #d4d4d4;
+                background-color: #ffffff;
+                color: #1e1e1e;
                 border-top: 2px solid #007acc;
             }
             QTabBar::tab:hover:!selected {
-                background-color: #2a2a2a;
-                color: #bbb;
+                background-color: #e8e8e8;
+                color: #333333;
             }
             QScrollBar:vertical {
-                background: #1e1e1e;
+                background: #f0f0f0;
                 width: 8px;
                 margin: 0;
             }
             QScrollBar::handle:vertical {
-                background: #424242;
+                background: #aaaaaa;
                 border-radius: 4px;
                 min-height: 20px;
             }
@@ -326,7 +326,7 @@ def _h_line() -> QFrame:
     f = QFrame()
     f.setFrameShape(QFrame.Shape.HLine)
     f.setFixedHeight(1)
-    f.setStyleSheet("background-color: #333;")
+    f.setStyleSheet("background-color: #cccccc;")
     return f
 
 
