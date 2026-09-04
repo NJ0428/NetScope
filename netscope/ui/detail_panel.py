@@ -1,119 +1,103 @@
-import json
-
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont
-from PySide6.QtWidgets import (
-    QTabWidget, QTextEdit, QVBoxLayout, QWidget,
-)
+from PySide6.QtWidgets import QTabWidget, QVBoxLayout, QWidget
 
 from netscope.models.session import SessionEntry
+from netscope.ui.views import (
+    AuthView, CachingView, CookiesView, HeadersView, HexViewWidget,
+    ImageViewWidget, JSONView, RawView, SyntaxViewWidget, TextViewWidget,
+    TransformerView, WebViewWidget, XMLView,
+)
 
 
 class DetailPanel(QWidget):
-    """Request/Response detail panel with tabs for Headers, Body, JSON, Raw."""
+    """Request / Response inspector with full tab set."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._setup_ui()
-
-    def _setup_ui(self):
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
 
         self._tabs = QTabWidget()
-        layout.addWidget(self._tabs)
+        lay.addWidget(self._tabs)
 
-        # Request section
-        self._request_tabs = QTabWidget()
-        self._req_headers = self._make_text_edit()
-        self._req_body = self._make_text_edit()
-        self._req_json = self._make_text_edit()
-        self._req_raw = self._make_text_edit()
-
-        self._request_tabs.addTab(self._req_headers, "Headers")
-        self._request_tabs.addTab(self._req_body, "Body")
-        self._request_tabs.addTab(self._req_json, "JSON")
-        self._request_tabs.addTab(self._req_raw, "Raw")
-
-        # Response section
-        self._response_tabs = QTabWidget()
-        self._res_headers = self._make_text_edit()
-        self._res_body = self._make_text_edit()
-        self._res_json = self._make_text_edit()
-        self._res_raw = self._make_text_edit()
-
-        self._response_tabs.addTab(self._res_headers, "Headers")
-        self._response_tabs.addTab(self._res_body, "Body")
-        self._response_tabs.addTab(self._res_json, "JSON")
-        self._response_tabs.addTab(self._res_raw, "Raw")
-
-        self._tabs.addTab(self._request_tabs, "Request")
-        self._tabs.addTab(self._response_tabs, "Response")
-
-    def _make_text_edit(self) -> QTextEdit:
-        edit = QTextEdit()
-        edit.setReadOnly(True)
-        edit.setFont(QFont("Consolas", 10))
-        edit.setStyleSheet("QTextEdit { background-color: #ffffff; color: #1e1e1e; }")
-        return edit
+        self._req = _SidePanel(is_request=True)
+        self._res = _SidePanel(is_request=False)
+        self._tabs.addTab(self._req, "Request")
+        self._tabs.addTab(self._res, "Response")
 
     def show_session(self, session: SessionEntry):
-        # Request headers
-        header_lines = [f"{session.method} {session.path} HTTP/1.1"]
-        for k, v in session.request_headers.items():
-            header_lines.append(f"{k}: {v}")
-        self._req_headers.setPlainText("\n".join(header_lines))
-
-        # Request body
-        req_body_text = self._decode_body(session.request_body)
-        self._req_body.setPlainText(req_body_text or "(empty)")
-
-        # Request JSON
-        self._req_json.setPlainText(self._try_format_json(req_body_text))
-
-        # Request raw
-        raw_req = "\n".join(header_lines) + "\n\n" + (req_body_text or "")
-        self._req_raw.setPlainText(raw_req)
-
-        # Response headers
-        res_header_lines = [f"HTTP/1.1 {session.status_code}"]
-        for k, v in session.response_headers.items():
-            res_header_lines.append(f"{k}: {v}")
-        self._res_headers.setPlainText("\n".join(res_header_lines))
-
-        # Response body
-        res_body_text = self._decode_body(session.response_body)
-        self._res_body.setPlainText(res_body_text or "(empty)")
-
-        # Response JSON
-        self._res_json.setPlainText(self._try_format_json(res_body_text))
-
-        # Response raw
-        raw_res = "\n".join(res_header_lines) + "\n\n" + (res_body_text or "")
-        self._res_raw.setPlainText(raw_res)
+        self._req.show_session(session)
+        self._res.show_session(session)
 
     def clear_display(self):
-        for edit in (
-            self._req_headers, self._req_body, self._req_json, self._req_raw,
-            self._res_headers, self._res_body, self._res_json, self._res_raw,
-        ):
-            edit.clear()
+        pass
 
-    @staticmethod
-    def _decode_body(body: bytes) -> str:
-        if not body:
-            return ""
-        try:
-            return body.decode("utf-8")
-        except UnicodeDecodeError:
-            return f"(binary data, {len(body)} bytes)"
 
-    @staticmethod
-    def _try_format_json(text: str) -> str:
-        if not text:
-            return "(no content)"
-        try:
-            parsed = json.loads(text)
-            return json.dumps(parsed, indent=2, ensure_ascii=False)
-        except (json.JSONDecodeError, ValueError):
-            return "(not valid JSON)"
+class _SidePanel(QWidget):
+    """One side (request or response) with all viewer tabs."""
+
+    _TAB_DEFS = [
+        ("Transformer", "transformer"),
+        ("Headers",     "headers"),
+        ("TextView",    "textview"),
+        ("SyntaxView",  "syntaxview"),
+        ("ImageView",   "imageview"),
+        ("HexView",     "hexview"),
+        ("WebView",     "webview"),
+        ("Auth",        "auth"),
+        ("Caching",     "caching"),
+        ("Cookies",     "cookies"),
+        ("Raw",         "raw"),
+        ("JSON",        "jsonview"),
+        ("XML",         "xmlview"),
+    ]
+
+    def __init__(self, is_request: bool, parent=None):
+        super().__init__(parent)
+        self._is_req = is_request
+
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+
+        self._tabs = QTabWidget()
+        lay.addWidget(self._tabs)
+
+        self.transformer = TransformerView()
+        self.headers     = HeadersView()
+        self.textview    = TextViewWidget()
+        self.syntaxview  = SyntaxViewWidget()
+        self.imageview   = ImageViewWidget()
+        self.hexview     = HexViewWidget()
+        self.webview     = WebViewWidget()
+        self.auth        = AuthView()
+        self.caching     = CachingView()
+        self.cookies     = CookiesView()
+        self.raw         = RawView()
+        self.jsonview    = JSONView()
+        self.xmlview     = XMLView()
+
+        for label, attr in self._TAB_DEFS:
+            self._tabs.addTab(getattr(self, attr), label)
+
+    def show_session(self, session: SessionEntry):
+        if self._is_req:
+            hdrs  = session.request_headers
+            body  = session.request_body
+            first = f"{session.method} {session.path} HTTP/1.1"
+        else:
+            hdrs  = session.response_headers
+            body  = session.response_body
+            first = f"HTTP/1.1 {session.status_code}"
+
+        self.transformer.show_data(hdrs, body)
+        self.headers    .show_headers(first, hdrs)
+        self.textview   .show_body(body, hdrs)
+        self.syntaxview .show_body(body, hdrs)
+        self.imageview  .show_body(body, hdrs)
+        self.hexview    .show_body(body)
+        self.webview    .show_body(body, hdrs)
+        self.auth       .show_data(hdrs, self._is_req)
+        self.caching    .show_data(hdrs)
+        self.cookies    .show_data(hdrs, self._is_req)
+        self.raw        .show_raw(first, hdrs, body)
+        self.jsonview   .show_body(body, hdrs)
+        self.xmlview    .show_body(body, hdrs)
