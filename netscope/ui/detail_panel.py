@@ -21,8 +21,8 @@ class DetailPanel(QWidget):
 
         self._req = _SidePanel(is_request=True)
         self._res = _SidePanel(is_request=False)
-        self._tabs.addTab(self._req, "Request")
-        self._tabs.addTab(self._res, "Response")
+        self._tabs.addTab(self._req, "요청")
+        self._tabs.addTab(self._res, "응답")
 
     def show_session(self, session: SessionEntry):
         self._req.show_session(session)
@@ -36,19 +36,19 @@ class _SidePanel(QWidget):
     """One side (request or response) with all viewer tabs."""
 
     _TAB_DEFS = [
-        ("Transformer", "transformer"),
-        ("Headers",     "headers"),
-        ("TextView",    "textview"),
-        ("SyntaxView",  "syntaxview"),
-        ("ImageView",   "imageview"),
-        ("HexView",     "hexview"),
-        ("WebView",     "webview"),
-        ("Auth",        "auth"),
-        ("Caching",     "caching"),
-        ("Cookies",     "cookies"),
-        ("Raw",         "raw"),
-        ("JSON",        "jsonview"),
-        ("XML",         "xmlview"),
+        ("트랜스포머",  "transformer"),
+        ("헤더",       "headers"),
+        ("텍스트 뷰",  "textview"),
+        ("문법 강조",  "syntaxview"),
+        ("이미지 뷰",  "imageview"),
+        ("HEX 뷰",    "hexview"),
+        ("웹 뷰",      "webview"),
+        ("인증",       "auth"),
+        ("캐싱",       "caching"),
+        ("쿠키",       "cookies"),
+        ("원문",       "raw"),
+        ("JSON",       "jsonview"),
+        ("XML",        "xmlview"),
     ]
 
     def __init__(self, is_request: bool, parent=None):

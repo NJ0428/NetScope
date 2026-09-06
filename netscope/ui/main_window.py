@@ -13,8 +13,8 @@ from netscope.ui.session_table import SessionTableView
 from netscope.ui.toolbar import Toolbar
 from netscope.ui.welcome_panel import WelcomePanel
 
-_STATUS_IDLE    = "● Idle"
-_STATUS_CAPTURE = "● Capturing"
+_STATUS_IDLE    = "● 대기 중"
+_STATUS_CAPTURE = "● 캡처 중"
 
 
 class MainWindow(QMainWindow):
@@ -38,64 +38,64 @@ class MainWindow(QMainWindow):
     def _setup_menu(self):
         mb = self.menuBar()
 
-        # File
-        file_menu = mb.addMenu("File")
-        file_menu.addAction(QAction("New Session", self, shortcut=QKeySequence.StandardKey.New))
-        file_menu.addAction(QAction("Open...", self, shortcut=QKeySequence.StandardKey.Open))
-        file_menu.addAction(QAction("Save", self, shortcut=QKeySequence.StandardKey.Save))
-        file_menu.addAction(QAction("Save As...", self, shortcut=QKeySequence("Ctrl+Shift+S")))
+        # 파일
+        file_menu = mb.addMenu("파일")
+        file_menu.addAction(QAction("새 세션", self, shortcut=QKeySequence.StandardKey.New))
+        file_menu.addAction(QAction("열기...", self, shortcut=QKeySequence.StandardKey.Open))
+        file_menu.addAction(QAction("저장", self, shortcut=QKeySequence.StandardKey.Save))
+        file_menu.addAction(QAction("다른 이름으로 저장...", self, shortcut=QKeySequence("Ctrl+Shift+S")))
         file_menu.addSeparator()
-        file_menu.addAction(QAction("Import...", self))
-        file_menu.addAction(QAction("Export...", self))
+        file_menu.addAction(QAction("가져오기...", self))
+        file_menu.addAction(QAction("내보내기...", self))
         file_menu.addSeparator()
-        act_quit = QAction("Quit", self, shortcut=QKeySequence.StandardKey.Quit)
+        act_quit = QAction("종료", self, shortcut=QKeySequence.StandardKey.Quit)
         act_quit.triggered.connect(self.close)
         file_menu.addAction(act_quit)
 
-        # Edit
-        edit_menu = mb.addMenu("Edit")
-        edit_menu.addAction(QAction("Find", self, shortcut=QKeySequence.StandardKey.Find))
+        # 편집
+        edit_menu = mb.addMenu("편집")
+        edit_menu.addAction(QAction("찾기", self, shortcut=QKeySequence.StandardKey.Find))
         edit_menu.addSeparator()
-        edit_menu.addAction(QAction("Copy", self, shortcut=QKeySequence.StandardKey.Copy))
-        edit_menu.addAction(QAction("Select All", self, shortcut=QKeySequence.StandardKey.SelectAll))
+        edit_menu.addAction(QAction("복사", self, shortcut=QKeySequence.StandardKey.Copy))
+        edit_menu.addAction(QAction("전체 선택", self, shortcut=QKeySequence.StandardKey.SelectAll))
         edit_menu.addSeparator()
-        edit_menu.addAction(QAction("Preferences...", self))
+        edit_menu.addAction(QAction("환경설정...", self))
 
-        # Rules
-        rules_menu = mb.addMenu("Rules")
-        rules_menu.addAction(QAction("Manage Rules...", self))
+        # 규칙
+        rules_menu = mb.addMenu("규칙")
+        rules_menu.addAction(QAction("규칙 관리...", self))
         rules_menu.addSeparator()
-        rules_menu.addAction(QAction("Enable Breakpoints", self))
-        rules_menu.addAction(QAction("Automatic Breakpoints", self))
+        rules_menu.addAction(QAction("중단점 활성화", self))
+        rules_menu.addAction(QAction("자동 중단점", self))
         rules_menu.addSeparator()
-        rules_menu.addAction(QAction("Custom Rules...", self))
+        rules_menu.addAction(QAction("사용자 정의 규칙...", self))
 
-        # Tools
-        tools_menu = mb.addMenu("Tools")
-        tools_menu.addAction(QAction("Options...", self))
+        # 도구
+        tools_menu = mb.addMenu("도구")
+        tools_menu.addAction(QAction("옵션...", self))
         tools_menu.addSeparator()
-        tools_menu.addAction(QAction("Certificate Manager", self))
-        tools_menu.addAction(QAction("Proxy Settings...", self))
+        tools_menu.addAction(QAction("인증서 관리자", self))
+        tools_menu.addAction(QAction("프록시 설정...", self))
         tools_menu.addSeparator()
         tools_menu.addAction(QAction("WinConfig", self))
 
-        # View
-        view_menu = mb.addMenu("View")
-        act_toolbar = QAction("Toolbar", self, checkable=True, checked=True)
+        # 보기
+        view_menu = mb.addMenu("보기")
+        act_toolbar = QAction("툴바", self, checkable=True, checked=True)
         act_toolbar.triggered.connect(lambda v: self._toolbar.setVisible(v))
         view_menu.addAction(act_toolbar)
-        act_status = QAction("Status Bar", self, checkable=True, checked=True)
+        act_status = QAction("상태 표시줄", self, checkable=True, checked=True)
         act_status.triggered.connect(lambda v: self._status_bar.setVisible(v))
         view_menu.addAction(act_status)
         view_menu.addSeparator()
-        view_menu.addAction(QAction("Reset Layout", self))
+        view_menu.addAction(QAction("레이아웃 초기화", self))
 
-        # Help
-        help_menu = mb.addMenu("Help")
-        help_menu.addAction(QAction("Documentation", self))
-        help_menu.addAction(QAction("Keyboard Shortcuts", self))
+        # 도움말
+        help_menu = mb.addMenu("도움말")
+        help_menu.addAction(QAction("문서", self))
+        help_menu.addAction(QAction("단축키", self))
         help_menu.addSeparator()
-        help_menu.addAction(QAction("About NetScope", self))
+        help_menu.addAction(QAction("NetScope 정보", self))
 
     # ── UI construction ───────────────────────────────────────────────────────
 
@@ -143,9 +143,9 @@ class MainWindow(QMainWindow):
         self.setStatusBar(self._status_bar)
 
         self._cap_label      = QLabel(_STATUS_IDLE)
-        self._port_label     = _status_sep(f"Port  {self._proxy_port}")
-        self._process_label  = _status_sep("Process  All")
-        self._count_label    = _status_sep("Sessions  0")
+        self._port_label     = _status_sep(f"포트  {self._proxy_port}")
+        self._process_label  = _status_sep("프로세스  전체")
+        self._count_label    = _status_sep("세션  0")
 
         self._status_bar.addWidget(self._cap_label, stretch=1)
         self._status_bar.addPermanentWidget(self._process_label)
@@ -190,7 +190,7 @@ class MainWindow(QMainWindow):
     def _on_clear(self):
         self._session_model.clear()
         self._right_stack.setCurrentIndex(0)
-        self._count_label.setText("Sessions  0")
+        self._count_label.setText("세션  0")
 
     @Slot(int)
     def _on_session_selected(self, row: int):
@@ -202,7 +202,7 @@ class MainWindow(QMainWindow):
     @Slot(SessionEntry)
     def _on_session_started(self, session: SessionEntry):
         self._session_model.add_session(session)
-        self._count_label.setText(f"Sessions  {self._session_model.rowCount()}")
+        self._count_label.setText(f"세션  {self._session_model.rowCount()}")
         self._table_view.scroll_to_bottom()
 
     @Slot(int, dict)
@@ -215,8 +215,8 @@ class MainWindow(QMainWindow):
 
     @Slot(str)
     def _on_process_changed(self, text: str):
-        label = "All" if text == "All Processes" else text
-        self._process_label.setText(f"Process  {label}")
+        label = "전체" if text == "전체 프로세스" else text
+        self._process_label.setText(f"프로세스  {label}")
 
     # ── Style ─────────────────────────────────────────────────────────────────
 
