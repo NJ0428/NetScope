@@ -2,7 +2,7 @@ from PySide6.QtCore import Qt, QAbstractTableModel, QModelIndex
 
 from netscope.models.session import SessionEntry, SessionState
 
-COLUMNS = ["#", "Result", "Protocol", "Host", "URL"]
+COLUMNS = ["#", "상태", "프로토콜", "호스트", "URL"]
 
 
 class SessionTableModel(QAbstractTableModel):
