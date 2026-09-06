@@ -38,14 +38,14 @@ class Toolbar(QWidget):
         layout.setContentsMargins(8, 4, 8, 4)
         layout.setSpacing(6)
 
-        self._btn_start = QPushButton("Start")
+        self._btn_start = QPushButton("시작")
         self._btn_start.setIcon(_icon("capture", 16))
         self._btn_start.setIconSize(QSize(16, 16))
         self._btn_start.setFixedWidth(90)
         self._btn_start.setStyleSheet(_BTN.format(bg="#27ae60", hover="#2ecc71"))
         self._btn_start.clicked.connect(self.start_clicked)
 
-        self._btn_stop = QPushButton("Stop")
+        self._btn_stop = QPushButton("중지")
         self._btn_stop.setIcon(_icon("stop", 16))
         self._btn_stop.setIconSize(QSize(16, 16))
         self._btn_stop.setFixedWidth(90)
@@ -61,7 +61,7 @@ class Toolbar(QWidget):
         search_icon = QLabel()
         search_icon.setPixmap(QPixmap(str(_IMG_DIR / "find" / "find_16x16.png")))
         self._search = QLineEdit()
-        self._search.setPlaceholderText("Filter sessions…")
+        self._search.setPlaceholderText("세션 필터…")
         self._search.setClearButtonEnabled(True)
         self._search.setStyleSheet(
             "QLineEdit { background: #ffffff; color: #1e1e1e; border: 1px solid #cccccc; "
@@ -75,10 +75,10 @@ class Toolbar(QWidget):
         layout.addWidget(_separator())
 
         # Process filter
-        process_label = QLabel("Process:")
+        process_label = QLabel("프로세스:")
         process_label.setStyleSheet("color: #666666; font-size: 11px;")
         self._process_combo = QComboBox()
-        self._process_combo.addItems(["All Processes", "chrome.exe", "firefox.exe", "python.exe", "node.exe"])
+        self._process_combo.addItems(["전체 프로세스", "chrome.exe", "firefox.exe", "python.exe", "node.exe"])
         self._process_combo.setFixedWidth(150)
         self._process_combo.setStyleSheet(
             "QComboBox { background: #ffffff; color: #1e1e1e; border: 1px solid #cccccc; "
@@ -94,7 +94,7 @@ class Toolbar(QWidget):
         layout.addWidget(_separator())
 
         # Decode
-        decode_label = QLabel("Decode:")
+        decode_label = QLabel("디코드:")
         decode_label.setStyleSheet("color: #666666; font-size: 11px;")
         self._decode_combo = QComboBox()
         self._decode_combo.addItems(["Auto", "UTF-8", "Base64", "Hex", "Raw"])
@@ -105,7 +105,7 @@ class Toolbar(QWidget):
         layout.addWidget(self._decode_combo)
         layout.addWidget(_separator())
 
-        self._btn_clear = QPushButton("Clear")
+        self._btn_clear = QPushButton("지우기")
         self._btn_clear.setIcon(_icon("clear", 16))
         self._btn_clear.setIconSize(QSize(16, 16))
         self._btn_clear.setFixedWidth(80)
