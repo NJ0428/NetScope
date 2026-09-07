@@ -171,7 +171,7 @@ class TransformerView(QWidget):
         lay.setContentsMargins(8, 8, 8, 8)
         lay.setSpacing(6)
 
-        self._table = _TwoColTable("Property", "Value")
+        self._table = _TwoColTable("속성", "값")
         self._table.setFixedHeight(150)
         lay.addWidget(self._table)
         lay.addWidget(_h_line())
@@ -190,41 +190,41 @@ class TransformerView(QWidget):
         self._table.load([
             ("Content-Encoding",   enc),
             ("Transfer-Encoding",  xfer),
-            ("Original Size",      f"{orig:,} bytes"),
-            ("Decoded Size",       f"{dec_size:,} bytes"),
-            ("Decode Method",      method),
+            ("원본 크기",           f"{orig:,} bytes"),
+            ("디코딩 크기",         f"{dec_size:,} bytes"),
+            ("디코딩 방식",         method),
         ])
 
         display = decoded if decoded is not None else body
         if display:
             self._edit.setPlainText(display.decode("utf-8", errors="replace"))
         else:
-            self._edit.setPlainText("(empty)")
+            self._edit.setPlainText("(비어 있음)")
 
     @staticmethod
     def _decompress(body: bytes, enc: str) -> tuple[Optional[bytes], str]:
         if not body:
-            return None, "none"
+            return None, "없음"
         e = enc.lower()
         try:
             if "gzip" in e:
-                return gzip.decompress(body), "gzip → decompressed"
+                return gzip.decompress(body), "gzip → 압축 해제됨"
             if "deflate" in e:
                 try:
-                    return zlib.decompress(body), "deflate (zlib) → decompressed"
+                    return zlib.decompress(body), "deflate (zlib) → 압축 해제됨"
                 except zlib.error:
-                    return zlib.decompress(body, -zlib.MAX_WBITS), "deflate (raw) → decompressed"
+                    return zlib.decompress(body, -zlib.MAX_WBITS), "deflate (raw) → 압축 해제됨"
             if "br" in e:
                 try:
                     import brotli  # type: ignore
-                    return brotli.decompress(body), "brotli → decompressed"
+                    return brotli.decompress(body), "brotli → 압축 해제됨"
                 except ImportError:
-                    return None, "brotli (pip install brotli)"
+                    return None, "brotli (pip install brotli 필요)"
             if "base64" in e:
-                return base64.b64decode(body), "base64 → decoded"
+                return base64.b64decode(body), "base64 → 디코딩됨"
         except Exception as ex:
-            return None, f"failed: {ex}"
-        return None, "identity (no transform)"
+            return None, f"실패: {ex}"
+        return None, "identity (변환 없음)"
 
 
 class HeadersView(QWidget):
@@ -234,7 +234,7 @@ class HeadersView(QWidget):
         super().__init__(parent)
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
-        self._table = _TwoColTable("Header", "Value")
+        self._table = _TwoColTable("헤더", "값")
         lay.addWidget(self._table)
 
     def show_headers(self, first_line: str, headers: dict):
@@ -258,7 +258,7 @@ class TextViewWidget(QWidget):
         lay.addWidget(self._edit)
 
     def show_body(self, body: bytes, headers: dict):
-        self._edit.setPlainText(_decode_body(body, headers) or "(empty)")
+        self._edit.setPlainText(_decode_body(body, headers) or "(비어 있음)")
 
 
 class SyntaxViewWidget(QWidget):
@@ -299,7 +299,7 @@ class SyntaxViewWidget(QWidget):
             elif stripped.startswith("<"):
                 self._hl = _XmlHL(doc)
 
-        self._edit.setPlainText(text or "(empty)")
+        self._edit.setPlainText(text or "(비어 있음)")
 
 
 class ImageViewWidget(QWidget):
@@ -333,11 +333,11 @@ class ImageViewWidget(QWidget):
             ct.endswith(x) for x in ("png", "jpeg", "jpg", "gif", "bmp", "webp", "ico", "svg")
         )
         if not body:
-            self._label.setText("(empty)")
+            self._label.setText("(비어 있음)")
             self._info.setText("")
             return
         if not is_image:
-            self._label.setText(f"Not an image\nContent-Type: {ct or 'unknown'}")
+            self._label.setText(f"이미지가 아닙니다\nContent-Type: {ct or '알 수 없음'}")
             self._info.setText("")
             return
 
@@ -355,7 +355,7 @@ class ImageViewWidget(QWidget):
                 f"{pix.width()} × {pix.height()} px  ·  {len(body):,} bytes"
             )
         else:
-            self._label.setText("(cannot decode image)")
+            self._label.setText("(이미지를 디코딩할 수 없습니다)")
             self._info.setText("")
 
 
@@ -373,7 +373,7 @@ class HexViewWidget(QWidget):
 
     def show_body(self, body: bytes):
         if not body:
-            self._edit.setPlainText("(empty)")
+            self._edit.setPlainText("(비어 있음)")
             return
         n = self.COLS
         lines = []
@@ -402,7 +402,7 @@ class WebViewWidget(QWidget):
             self._mode = "web"
         except ImportError:
             self._web = None
-            note = QLabel("  ⚠  PySide6-WebEngine not installed — showing HTML source")
+            note = QLabel("  ⚠  PySide6-WebEngine 미설치 — HTML 소스로 표시합니다")
             note.setStyleSheet(
                 "background:#fff3cd; color:#856404; font-size:11px; padding:4px 8px;"
             )
@@ -420,7 +420,7 @@ class WebViewWidget(QWidget):
             else:
                 self._web.setContent(body or b"", ct or "text/plain")
         else:
-            self._edit.setPlainText(text or "(empty)")
+            self._edit.setPlainText(text or "(비어 있음)")
 
 
 class AuthView(QWidget):
@@ -432,11 +432,11 @@ class AuthView(QWidget):
         lay.setContentsMargins(8, 8, 8, 8)
         lay.setSpacing(8)
 
-        self._table = _TwoColTable("Field", "Value")
+        self._table = _TwoColTable("항목", "값")
         lay.addWidget(self._table)
         lay.addWidget(_h_line())
 
-        detail_lbl = QLabel("Decoded Details")
+        detail_lbl = QLabel("디코딩 상세 정보")
         detail_lbl.setStyleSheet("color:#555; font-size:11px; font-weight:bold;")
         lay.addWidget(detail_lbl)
 
@@ -452,19 +452,19 @@ class AuthView(QWidget):
             auth = _hval(headers, "authorization")
             if auth:
                 scheme, _, cred = auth.partition(" ")
-                rows.append(("Scheme", scheme.strip()))
+                rows.append(("인증 방식", scheme.strip()))
                 sl = scheme.strip().lower()
                 if sl == "basic":
                     try:
                         decoded = base64.b64decode(cred.strip()).decode("utf-8", errors="replace")
                         user, _, pwd = decoded.partition(":")
-                        rows += [("Username", user), ("Password", "●" * len(pwd))]
-                        details.append(f"[Basic Auth]\nUsername: {user}\nPassword: {pwd}")
+                        rows += [("사용자명", user), ("비밀번호", "●" * len(pwd))]
+                        details.append(f"[Basic 인증]\n사용자명: {user}\n비밀번호: {pwd}")
                     except Exception:
-                        rows.append(("Credentials", cred[:80]))
+                        rows.append(("자격 증명", cred[:80]))
                 elif sl == "bearer":
-                    rows.append(("Token (preview)", cred[:40] + ("…" if len(cred) > 40 else "")))
-                    details.append(f"[Bearer Token]\n{cred}")
+                    rows.append(("토큰 (미리보기)", cred[:40] + ("…" if len(cred) > 40 else "")))
+                    details.append(f"[Bearer 토큰]\n{cred}")
                     # Try JWT payload decode
                     parts = cred.split(".")
                     if len(parts) == 3:
@@ -472,17 +472,17 @@ class AuthView(QWidget):
                             pad = parts[1] + "=" * (4 - len(parts[1]) % 4)
                             payload = json.loads(base64.urlsafe_b64decode(pad))
                             details.append(
-                                "\n[JWT Payload]\n"
+                                "\n[JWT 페이로드]\n"
                                 + json.dumps(payload, indent=2, ensure_ascii=False)
                             )
                         except Exception:
                             pass
                 elif sl == "digest":
-                    rows.append(("Digest Params", cred[:120]))
+                    rows.append(("Digest 파라미터", cred[:120]))
                 elif sl == "oauth":
-                    rows.append(("OAuth Token", cred[:80]))
+                    rows.append(("OAuth 토큰", cred[:80]))
                 else:
-                    rows.append(("Credentials", cred[:80]))
+                    rows.append(("자격 증명", cred[:80]))
 
             proxy = _hval(headers, "proxy-authorization")
             if proxy:
@@ -499,7 +499,7 @@ class AuthView(QWidget):
                     rows.append((h.title().replace("-", "-"), val))
 
         if not rows:
-            rows = [("(no auth headers found)", "")]
+            rows = [("(인증 헤더 없음)", "")]
 
         self._table.load(rows)
         self._detail.setPlainText("\n".join(details) if details else "")
@@ -519,7 +519,7 @@ class CachingView(QWidget):
         super().__init__(parent)
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
-        self._table = _TwoColTable("Header / Directive", "Value")
+        self._table = _TwoColTable("헤더 / 지시어", "값")
         lay.addWidget(self._table)
 
     def show_data(self, headers: dict):
@@ -541,7 +541,7 @@ class CachingView(QWidget):
                         rows.append((f"  ╰ {directive}", "✓"))
 
         if not rows:
-            rows = [("(no caching headers found)", "")]
+            rows = [("(캐시 관련 헤더 없음)", "")]
         self._table.load(rows)
 
 
@@ -552,7 +552,7 @@ class CookiesView(QWidget):
         super().__init__(parent)
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
-        self._table = _TwoColTable("Name", "Value")
+        self._table = _TwoColTable("이름", "값")
         lay.addWidget(self._table)
 
     def show_data(self, headers: dict, is_request: bool):
@@ -585,7 +585,7 @@ class CookiesView(QWidget):
                 rows.append(("", ""))  # separator
 
         if not rows or all(r == ("", "") for r in rows):
-            rows = [("(no cookie headers found)", "")]
+            rows = [("(쿠키 헤더 없음)", "")]
         self._table.load(rows)
 
 
@@ -622,14 +622,14 @@ class JSONView(QWidget):
     def show_body(self, body: bytes, headers: dict):
         text = _decode_body(body, headers)
         if not text:
-            self._edit.setPlainText("(empty)")
+            self._edit.setPlainText("(비어 있음)")
             return
         try:
             self._edit.setPlainText(
                 json.dumps(json.loads(text), indent=2, ensure_ascii=False)
             )
         except (json.JSONDecodeError, ValueError):
-            self._edit.setPlainText("(not valid JSON)\n\n" + text)
+            self._edit.setPlainText("(유효한 JSON이 아닙니다)\n\n" + text)
 
 
 class XMLView(QWidget):
@@ -646,14 +646,14 @@ class XMLView(QWidget):
     def show_body(self, body: bytes, headers: dict):
         text = _decode_body(body, headers)
         if not text:
-            self._edit.setPlainText("(empty)")
+            self._edit.setPlainText("(비어 있음)")
             return
         try:
             import xml.dom.minidom
             dom = xml.dom.minidom.parseString(body)
             self._edit.setPlainText(dom.toprettyxml(indent="  "))
         except Exception:
-            self._edit.setPlainText("(not valid XML)\n\n" + text)
+            self._edit.setPlainText("(유효한 XML이 아닙니다)\n\n" + text)
 
 
 # ─── Utility ──────────────────────────────────────────────────────────────────
