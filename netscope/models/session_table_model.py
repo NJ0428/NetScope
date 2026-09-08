@@ -88,3 +88,12 @@ class SessionTableModel(QAbstractTableModel):
         self._sessions.clear()
         self._next_id = 1
         self.endResetModel()
+
+    def get_all_sessions(self) -> list[SessionEntry]:
+        return list(self._sessions)
+
+    def load_sessions(self, sessions: list[SessionEntry]):
+        self.beginResetModel()
+        self._sessions = sessions
+        self._next_id = max((s.id for s in sessions), default=0) + 1
+        self.endResetModel()

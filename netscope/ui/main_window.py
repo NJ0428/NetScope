@@ -1,11 +1,15 @@
+import base64
+import json
+from pathlib import Path
+
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
-    QFrame, QLabel, QMainWindow, QSplitter, QStackedWidget,
-    QStatusBar, QVBoxLayout, QWidget,
+    QFileDialog, QFrame, QLabel, QMainWindow, QMessageBox,
+    QSplitter, QStackedWidget, QStatusBar, QVBoxLayout, QWidget,
 )
 
-from netscope.models.session import SessionEntry
+from netscope.models.session import SessionEntry, SessionState
 from netscope.models.session_table_model import SessionTableModel
 from netscope.proxy.engine import ProxyEngine, StubProxyEngine
 from netscope.ui.detail_panel import DetailPanel
@@ -27,6 +31,8 @@ class MainWindow(QMainWindow):
         self._proxy_port = 8888
         self._session_model = SessionTableModel(self)
         self._engine: ProxyEngine = StubProxyEngine(self)
+        self._current_file: str | None = None
+        self._modified = False
 
         self._setup_ui()
         self._setup_menu()
@@ -40,13 +46,32 @@ class MainWindow(QMainWindow):
 
         # 파일
         file_menu = mb.addMenu("파일")
-        file_menu.addAction(QAction("새 세션", self, shortcut=QKeySequence.StandardKey.New))
-        file_menu.addAction(QAction("열기...", self, shortcut=QKeySequence.StandardKey.Open))
-        file_menu.addAction(QAction("저장", self, shortcut=QKeySequence.StandardKey.Save))
-        file_menu.addAction(QAction("다른 이름으로 저장...", self, shortcut=QKeySequence("Ctrl+Shift+S")))
+        act_new = QAction("새 세션", self, shortcut=QKeySequence.StandardKey.New)
+        act_new.triggered.connect(self._on_new)
+        file_menu.addAction(act_new)
+
+        act_open = QAction("열기...", self, shortcut=QKeySequence.StandardKey.Open)
+        act_open.triggered.connect(self._on_open)
+        file_menu.addAction(act_open)
+
+        self._act_save = QAction("저장", self, shortcut=QKeySequence.StandardKey.Save)
+        self._act_save.triggered.connect(self._on_save)
+        file_menu.addAction(self._act_save)
+
+        act_save_as = QAction("다른 이름으로 저장...", self, shortcut=QKeySequence("Ctrl+Shift+S"))
+        act_save_as.triggered.connect(self._on_save_as)
+        file_menu.addAction(act_save_as)
+
         file_menu.addSeparator()
-        file_menu.addAction(QAction("가져오기...", self))
-        file_menu.addAction(QAction("내보내기...", self))
+
+        act_import = QAction("가져오기...", self)
+        act_import.triggered.connect(self._on_import)
+        file_menu.addAction(act_import)
+
+        act_export = QAction("내보내기...", self)
+        act_export.triggered.connect(self._on_export)
+        file_menu.addAction(act_export)
+
         file_menu.addSeparator()
         act_quit = QAction("종료", self, shortcut=QKeySequence.StandardKey.Quit)
         act_quit.triggered.connect(self.close)
@@ -191,6 +216,8 @@ class MainWindow(QMainWindow):
         self._session_model.clear()
         self._right_stack.setCurrentIndex(0)
         self._count_label.setText("세션  0")
+        self._modified = False
+        self._update_title()
 
     @Slot(int)
     def _on_session_selected(self, row: int):
@@ -204,6 +231,7 @@ class MainWindow(QMainWindow):
         self._session_model.add_session(session)
         self._count_label.setText(f"세션  {self._session_model.rowCount()}")
         self._table_view.scroll_to_bottom()
+        self._mark_modified()
 
     @Slot(int, dict)
     def _on_session_completed(self, session_id: int, fields: dict):
@@ -217,6 +245,253 @@ class MainWindow(QMainWindow):
     def _on_process_changed(self, text: str):
         label = "전체" if text == "전체 프로세스" else text
         self._process_label.setText(f"프로세스  {label}")
+
+    # ── File operations ───────────────────────────────────────────────────────
+
+    @Slot()
+    def _on_new(self):
+        if not self._confirm_discard():
+            return
+        if self._engine.is_running():
+            self._engine.stop()
+            self._toolbar.set_capturing(False)
+            self._cap_label.setText(_STATUS_IDLE)
+            self._cap_label.setStyleSheet("color: #666666;")
+        self._session_model.clear()
+        self._right_stack.setCurrentIndex(0)
+        self._count_label.setText("세션  0")
+        self._current_file = None
+        self._modified = False
+        self._update_title()
+
+    @Slot()
+    def _on_open(self):
+        if not self._confirm_discard():
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self, "세션 열기", "",
+            "NetScope 세션 (*.netsession);;모든 파일 (*)",
+        )
+        if not path:
+            return
+        try:
+            self._load_file(path)
+        except Exception as exc:
+            QMessageBox.critical(self, "열기 실패", f"파일을 열 수 없습니다:\n{exc}")
+
+    @Slot()
+    def _on_save(self):
+        if self._current_file:
+            try:
+                self._write_file(self._current_file)
+            except Exception as exc:
+                QMessageBox.critical(self, "저장 실패", f"파일을 저장할 수 없습니다:\n{exc}")
+        else:
+            self._on_save_as()
+
+    @Slot()
+    def _on_save_as(self):
+        default = Path(self._current_file).stem if self._current_file else "세션"
+        path, _ = QFileDialog.getSaveFileName(
+            self, "다른 이름으로 저장", default,
+            "NetScope 세션 (*.netsession);;모든 파일 (*)",
+        )
+        if not path:
+            return
+        if not path.endswith(".netsession"):
+            path += ".netsession"
+        try:
+            self._write_file(path)
+        except Exception as exc:
+            QMessageBox.critical(self, "저장 실패", f"파일을 저장할 수 없습니다:\n{exc}")
+
+    @Slot()
+    def _on_import(self):
+        if not self._confirm_discard():
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self, "HAR 가져오기", "",
+            "HTTP Archive (*.har);;모든 파일 (*)",
+        )
+        if not path:
+            return
+        try:
+            self._import_har(path)
+        except Exception as exc:
+            QMessageBox.critical(self, "가져오기 실패", f"HAR 파일을 가져올 수 없습니다:\n{exc}")
+
+    @Slot()
+    def _on_export(self):
+        if self._session_model.rowCount() == 0:
+            QMessageBox.information(self, "내보내기", "내보낼 세션이 없습니다.")
+            return
+        default = Path(self._current_file).stem if self._current_file else "세션"
+        path, _ = QFileDialog.getSaveFileName(
+            self, "HAR 내보내기", default,
+            "HTTP Archive (*.har);;모든 파일 (*)",
+        )
+        if not path:
+            return
+        if not path.endswith(".har"):
+            path += ".har"
+        try:
+            self._export_har(path)
+            QMessageBox.information(self, "내보내기 완료", f"HAR 파일로 저장되었습니다:\n{path}")
+        except Exception as exc:
+            QMessageBox.critical(self, "내보내기 실패", f"HAR 파일을 저장할 수 없습니다:\n{exc}")
+
+    # ── File I/O helpers ──────────────────────────────────────────────────────
+
+    def _load_file(self, path: str):
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if data.get("version") != 1:
+            raise ValueError("지원하지 않는 파일 형식입니다.")
+        sessions = [_session_from_dict(d) for d in data.get("sessions", [])]
+        self._session_model.load_sessions(sessions)
+        self._right_stack.setCurrentIndex(0)
+        self._count_label.setText(f"세션  {len(sessions)}")
+        self._current_file = path
+        self._modified = False
+        self._update_title()
+
+    def _write_file(self, path: str):
+        data = {
+            "version": 1,
+            "sessions": [_session_to_dict(s) for s in self._session_model.get_all_sessions()],
+        }
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        self._current_file = path
+        self._modified = False
+        self._update_title()
+
+    def _import_har(self, path: str):
+        with open(path, "r", encoding="utf-8") as f:
+            har = json.load(f)
+        entries = har.get("log", {}).get("entries", [])
+        sessions: list[SessionEntry] = []
+        for i, entry in enumerate(entries, start=1):
+            req = entry.get("request", {})
+            resp = entry.get("response", {})
+            url = req.get("url", "")
+            from urllib.parse import urlparse
+            parsed = urlparse(url)
+            req_headers = {h["name"]: h["value"] for h in req.get("headers", [])}
+            resp_headers = {h["name"]: h["value"] for h in resp.get("headers", [])}
+            req_body_text = (req.get("postData") or {}).get("text", "")
+            resp_body_text = (resp.get("content") or {}).get("text", "")
+            body_size = resp.get("bodySize", 0) or 0
+            elapsed = entry.get("timings", {}).get("wait", 0) or 0
+            status = resp.get("status", 0)
+            content_type = resp_headers.get("Content-Type", "")
+            s = SessionEntry(
+                id=i,
+                method=req.get("method", "GET"),
+                scheme=parsed.scheme or "https",
+                host=parsed.netloc,
+                path=parsed.path or "/",
+                url=url,
+                status_code=status,
+                content_type=content_type,
+                body_size=body_size,
+                elapsed_ms=float(elapsed),
+                state=SessionState.COMPLETE if status < 500 else SessionState.ERROR,
+                request_headers=req_headers,
+                request_body=req_body_text.encode("utf-8", errors="replace"),
+                response_headers=resp_headers,
+                response_body=resp_body_text.encode("utf-8", errors="replace"),
+            )
+            sessions.append(s)
+        self._session_model.load_sessions(sessions)
+        self._right_stack.setCurrentIndex(0)
+        self._count_label.setText(f"세션  {len(sessions)}")
+        self._current_file = None
+        self._modified = False
+        self._update_title()
+
+    def _export_har(self, path: str):
+        import datetime
+        entries = []
+        for s in self._session_model.get_all_sessions():
+            req_headers = [{"name": k, "value": v} for k, v in s.request_headers.items()]
+            resp_headers = [{"name": k, "value": v} for k, v in s.response_headers.items()]
+            entries.append({
+                "startedDateTime": datetime.datetime.utcnow().isoformat() + "Z",
+                "time": s.elapsed_ms,
+                "request": {
+                    "method": s.method,
+                    "url": s.url,
+                    "httpVersion": "HTTP/1.1",
+                    "headers": req_headers,
+                    "queryString": [],
+                    "cookies": [],
+                    "headersSize": -1,
+                    "bodySize": len(s.request_body),
+                    "postData": {"mimeType": "", "text": s.request_body.decode("utf-8", errors="replace")} if s.request_body else None,
+                },
+                "response": {
+                    "status": s.status_code,
+                    "statusText": "",
+                    "httpVersion": "HTTP/1.1",
+                    "headers": resp_headers,
+                    "cookies": [],
+                    "content": {
+                        "size": s.body_size,
+                        "mimeType": s.content_type,
+                        "text": s.response_body.decode("utf-8", errors="replace"),
+                    },
+                    "redirectURL": "",
+                    "headersSize": -1,
+                    "bodySize": s.body_size,
+                },
+                "cache": {},
+                "timings": {"send": 0, "wait": s.elapsed_ms, "receive": 0},
+            })
+        har = {
+            "log": {
+                "version": "1.2",
+                "creator": {"name": "NetScope", "version": "1.0"},
+                "entries": entries,
+            }
+        }
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(har, f, ensure_ascii=False, indent=2)
+
+    # ── UI state helpers ──────────────────────────────────────────────────────
+
+    def _mark_modified(self):
+        if not self._modified:
+            self._modified = True
+            self._update_title()
+
+    def _update_title(self):
+        if self._current_file:
+            name = Path(self._current_file).name
+        else:
+            name = "새 세션"
+        suffix = " *" if self._modified else ""
+        self.setWindowTitle(f"NetScope — {name}{suffix}")
+
+    def _confirm_discard(self) -> bool:
+        """변경 사항이 있으면 저장 여부를 묻고, 계속 진행 여부를 반환합니다."""
+        if not self._modified:
+            return True
+        answer = QMessageBox.question(
+            self,
+            "변경 사항 저장",
+            "저장하지 않은 변경 사항이 있습니다.\n저장하시겠습니까?",
+            QMessageBox.StandardButton.Save |
+            QMessageBox.StandardButton.Discard |
+            QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Save,
+        )
+        if answer == QMessageBox.StandardButton.Save:
+            self._on_save()
+            return not self._modified  # 저장 성공 시 True
+        if answer == QMessageBox.StandardButton.Discard:
+            return True
+        return False  # Cancel
 
     # ── Style ─────────────────────────────────────────────────────────────────
 
@@ -315,9 +590,54 @@ class MainWindow(QMainWindow):
         """)
 
     def closeEvent(self, event):
+        if self._modified and not self._confirm_discard():
+            event.ignore()
+            return
         if self._engine.is_running():
             self._engine.stop()
         super().closeEvent(event)
+
+
+# ── Serialization helpers ─────────────────────────────────────────────────────
+
+def _session_to_dict(s: SessionEntry) -> dict:
+    return {
+        "id": s.id,
+        "method": s.method,
+        "scheme": s.scheme,
+        "host": s.host,
+        "path": s.path,
+        "url": s.url,
+        "status_code": s.status_code,
+        "content_type": s.content_type,
+        "body_size": s.body_size,
+        "elapsed_ms": s.elapsed_ms,
+        "state": s.state.value,
+        "request_headers": s.request_headers,
+        "request_body": base64.b64encode(s.request_body).decode(),
+        "response_headers": s.response_headers,
+        "response_body": base64.b64encode(s.response_body).decode(),
+    }
+
+
+def _session_from_dict(d: dict) -> SessionEntry:
+    return SessionEntry(
+        id=d["id"],
+        method=d.get("method", "GET"),
+        scheme=d.get("scheme", "https"),
+        host=d.get("host", ""),
+        path=d.get("path", "/"),
+        url=d.get("url", ""),
+        status_code=d.get("status_code", 0),
+        content_type=d.get("content_type", ""),
+        body_size=d.get("body_size", 0),
+        elapsed_ms=d.get("elapsed_ms", 0.0),
+        state=SessionState(d.get("state", "complete")),
+        request_headers=d.get("request_headers", {}),
+        request_body=base64.b64decode(d.get("request_body", "")),
+        response_headers=d.get("response_headers", {}),
+        response_body=base64.b64decode(d.get("response_body", "")),
+    )
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
