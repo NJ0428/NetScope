@@ -113,6 +113,10 @@ class Toolbar(QWidget):
         self._btn_clear.clicked.connect(self.clear_clicked)
         layout.addWidget(self._btn_clear)
 
+    def focus_search(self):
+        self._search.setFocus()
+        self._search.selectAll()
+
     def set_capturing(self, capturing: bool):
         self._btn_start.setEnabled(not capturing)
         self._btn_stop.setEnabled(capturing)

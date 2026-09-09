@@ -79,7 +79,9 @@ class MainWindow(QMainWindow):
 
         # 편집
         edit_menu = mb.addMenu("편집")
-        edit_menu.addAction(QAction("찾기", self, shortcut=QKeySequence.StandardKey.Find))
+        act_find = QAction("찾기", self, shortcut=QKeySequence.StandardKey.Find)
+        act_find.triggered.connect(self._on_find)
+        edit_menu.addAction(act_find)
         edit_menu.addSeparator()
         edit_menu.addAction(QAction("복사", self, shortcut=QKeySequence.StandardKey.Copy))
         edit_menu.addAction(QAction("전체 선택", self, shortcut=QKeySequence.StandardKey.SelectAll))
@@ -245,6 +247,10 @@ class MainWindow(QMainWindow):
     def _on_process_changed(self, text: str):
         label = "전체" if text == "전체 프로세스" else text
         self._process_label.setText(f"프로세스  {label}")
+
+    @Slot()
+    def _on_find(self):
+        self._toolbar.focus_search()
 
     # ── File operations ───────────────────────────────────────────────────────
 
