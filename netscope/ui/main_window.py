@@ -5,14 +5,20 @@ from pathlib import Path
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
-    QFileDialog, QFrame, QLabel, QMainWindow, QMessageBox,
+    QFileDialog, QFrame, QLabel, QMainWindow, QMenu, QMessageBox,
     QSplitter, QStackedWidget, QStatusBar, QVBoxLayout, QWidget,
 )
 
 from netscope.models.session import SessionEntry, SessionState
 from netscope.models.session_table_model import SessionTableModel
 from netscope.proxy.engine import ProxyEngine, StubProxyEngine
+from netscope.rules.rules_engine import RulesEngine
 from netscope.ui.detail_panel import DetailPanel
+from netscope.ui.dialogs.breakpoint_dialog import BreakpointDialog
+from netscope.ui.dialogs.customize_rules_dialog import CustomizeRulesDialog
+from netscope.ui.dialogs.performance_dialog import PerformanceDialog
+from netscope.ui.dialogs.rules_manager_dialog import RulesManagerDialog
+from netscope.ui.dialogs.user_agent_dialog import UserAgentDialog
 from netscope.ui.session_table import SessionTableView
 from netscope.ui.toolbar import Toolbar
 from netscope.ui.welcome_panel import WelcomePanel
@@ -29,8 +35,10 @@ class MainWindow(QMainWindow):
         self.resize(1400, 860)
 
         self._proxy_port = 8888
+        self._rules = RulesEngine(self)
         self._session_model = SessionTableModel(self)
         self._engine: ProxyEngine = StubProxyEngine(self)
+        self._engine.set_rules(self._rules)
         self._current_file: str | None = None
         self._modified = False
 
@@ -90,12 +98,101 @@ class MainWindow(QMainWindow):
 
         # 규칙
         rules_menu = mb.addMenu("규칙")
-        rules_menu.addAction(QAction("규칙 관리...", self))
+
+        act_rules_mgr = QAction("규칙 관리...", self)
+        act_rules_mgr.triggered.connect(self._on_rules_manager)
+        rules_menu.addAction(act_rules_mgr)
+
         rules_menu.addSeparator()
-        rules_menu.addAction(QAction("중단점 활성화", self))
-        rules_menu.addAction(QAction("자동 중단점", self))
+
+        # Automatic Breakpoints submenu
+        bp_menu = rules_menu.addMenu("중단점 (Automatic Breakpoints)")
+
+        self._act_bp_req = QAction("요청에서 중단 (Before Request)", self, checkable=True)
+        self._act_bp_req.triggered.connect(
+            lambda checked: self._toggle_rule("breakpoint_requests", checked)
+        )
+        bp_menu.addAction(self._act_bp_req)
+
+        self._act_bp_resp = QAction("응답에서 중단 (Before Response)", self, checkable=True)
+        self._act_bp_resp.triggered.connect(
+            lambda checked: self._toggle_rule("breakpoint_responses", checked)
+        )
+        bp_menu.addAction(self._act_bp_resp)
+
         rules_menu.addSeparator()
-        rules_menu.addAction(QAction("사용자 정의 규칙...", self))
+
+        # Filter toggles
+        self._act_hide_images = QAction("이미지 요청 숨기기 (Hide Image Requests)", self, checkable=True)
+        self._act_hide_images.triggered.connect(
+            lambda checked: self._toggle_rule("hide_image_requests", checked)
+        )
+        rules_menu.addAction(self._act_hide_images)
+
+        self._act_hide_connects = QAction("CONNECT 요청 숨기기 (Hide CONNECTs)", self, checkable=True)
+        self._act_hide_connects.triggered.connect(
+            lambda checked: self._toggle_rule("hide_connects", checked)
+        )
+        rules_menu.addAction(self._act_hide_connects)
+
+        self._act_hide_304s = QAction("304 응답 숨기기 (Hide 304s)", self, checkable=True)
+        self._act_hide_304s.triggered.connect(
+            lambda checked: self._toggle_rule("hide_304s", checked)
+        )
+        rules_menu.addAction(self._act_hide_304s)
+
+        rules_menu.addSeparator()
+
+        # Modification toggles
+        self._act_proxy_auth = QAction("프록시 인증 요구 (Require Proxy Authentication)", self, checkable=True)
+        self._act_proxy_auth.triggered.connect(
+            lambda checked: self._toggle_rule("require_proxy_auth", checked)
+        )
+        rules_menu.addAction(self._act_proxy_auth)
+
+        self._act_gzip = QAction("GZIP 인코딩 적용 (Apply GZIP Encoding)", self, checkable=True)
+        self._act_gzip.triggered.connect(
+            lambda checked: self._toggle_rule("apply_gzip", checked)
+        )
+        rules_menu.addAction(self._act_gzip)
+
+        self._act_remove_enc = QAction("모든 인코딩 제거 (Remove All Encodings)", self, checkable=True)
+        self._act_remove_enc.triggered.connect(
+            lambda checked: self._toggle_rule("remove_encodings", checked)
+        )
+        rules_menu.addAction(self._act_remove_enc)
+
+        self._act_japanese = QAction("일본어 콘텐츠 요청 (Request Japanese Content)", self, checkable=True)
+        self._act_japanese.triggered.connect(
+            lambda checked: self._toggle_rule("request_japanese", checked)
+        )
+        rules_menu.addAction(self._act_japanese)
+
+        self._act_auto_auth = QAction("자동 인증 (Automatically Authenticate)", self, checkable=True)
+        self._act_auto_auth.triggered.connect(
+            lambda checked: self._toggle_rule("auto_authenticate", checked)
+        )
+        rules_menu.addAction(self._act_auto_auth)
+
+        rules_menu.addSeparator()
+
+        # User-Agents submenu
+        ua_menu = rules_menu.addMenu("User-Agents")
+
+        act_ua_custom = QAction("User-Agent 변경...", self)
+        act_ua_custom.triggered.connect(self._on_user_agent)
+        ua_menu.addAction(act_ua_custom)
+
+        # Performance submenu
+        act_perf = QAction("성능 시뮬레이션 (Performance)...", self)
+        act_perf.triggered.connect(self._on_performance)
+        rules_menu.addAction(act_perf)
+
+        rules_menu.addSeparator()
+
+        act_customize = QAction("사용자 정의 규칙 (Customize Rules)...", self)
+        act_customize.triggered.connect(self._on_customize_rules)
+        rules_menu.addAction(act_customize)
 
         # 도구
         tools_menu = mb.addMenu("도구")
@@ -133,28 +230,21 @@ class MainWindow(QMainWindow):
         root_layout.setContentsMargins(0, 0, 0, 0)
         root_layout.setSpacing(0)
 
-        # ① Toolbar
         self._toolbar = Toolbar()
         root_layout.addWidget(self._toolbar)
-
         root_layout.addWidget(_h_line())
 
-        # ② Horizontal splitter: sidebar (left) | content (right)
         self._h_splitter = QSplitter(Qt.Orientation.Horizontal)
         self._h_splitter.setHandleWidth(2)
 
-        # Left — session list
         self._table_view = SessionTableView(self._session_model)
         self._h_splitter.addWidget(self._table_view)
 
-        # Right — stacked: welcome (0) | inspector (1)
         self._right_stack = QStackedWidget()
-
         self._welcome_panel = WelcomePanel()
         self._detail_panel  = DetailPanel()
-
-        self._right_stack.addWidget(self._welcome_panel)   # index 0
-        self._right_stack.addWidget(self._detail_panel)    # index 1
+        self._right_stack.addWidget(self._welcome_panel)
+        self._right_stack.addWidget(self._detail_panel)
         self._right_stack.setCurrentIndex(0)
 
         self._h_splitter.addWidget(self._right_stack)
@@ -164,15 +254,14 @@ class MainWindow(QMainWindow):
 
         root_layout.addWidget(self._h_splitter, stretch=1)
 
-        # ⑤ Status bar
         self._status_bar = QStatusBar()
         self._status_bar.setSizeGripEnabled(False)
         self.setStatusBar(self._status_bar)
 
-        self._cap_label      = QLabel(_STATUS_IDLE)
-        self._port_label     = _status_sep(f"포트  {self._proxy_port}")
-        self._process_label  = _status_sep("프로세스  전체")
-        self._count_label    = _status_sep("세션  0")
+        self._cap_label     = QLabel(_STATUS_IDLE)
+        self._port_label    = _status_sep(f"포트  {self._proxy_port}")
+        self._process_label = _status_sep("프로세스  전체")
+        self._count_label   = _status_sep("세션  0")
 
         self._status_bar.addWidget(self._cap_label, stretch=1)
         self._status_bar.addPermanentWidget(self._process_label)
@@ -189,6 +278,7 @@ class MainWindow(QMainWindow):
         self._toolbar.process_changed.connect(self._on_process_changed)
 
         self._table_view.session_selected.connect(self._on_session_selected)
+        self._table_view.set_rules(self._rules)
 
         self._engine.session_started.connect(
             self._on_session_started, Qt.ConnectionType.QueuedConnection)
@@ -196,6 +286,66 @@ class MainWindow(QMainWindow):
             self._on_session_completed, Qt.ConnectionType.QueuedConnection)
         self._engine.status_changed.connect(
             self._on_status_changed, Qt.ConnectionType.QueuedConnection)
+        self._engine.breakpoint_request.connect(
+            self._on_breakpoint, Qt.ConnectionType.QueuedConnection)
+
+    # ── Rule helpers ──────────────────────────────────────────────────────────
+
+    def _toggle_rule(self, attr: str, enabled: bool):
+        setattr(self._rules, attr, enabled)
+        self._rules.notify()
+
+    # ── Rules menu slots ──────────────────────────────────────────────────────
+
+    @Slot()
+    def _on_rules_manager(self):
+        dlg = RulesManagerDialog(self._rules, self)
+        if dlg.exec():
+            self._sync_menu_checks()
+
+    @Slot()
+    def _on_customize_rules(self):
+        CustomizeRulesDialog(self._rules, self).exec()
+
+    @Slot()
+    def _on_user_agent(self):
+        UserAgentDialog(self._rules, self).exec()
+
+    @Slot()
+    def _on_performance(self):
+        PerformanceDialog(self._rules, self).exec()
+
+    def _sync_menu_checks(self):
+        """Sync checkable menu items with current rules state (after dialog edits)."""
+        self._act_hide_images.setChecked(self._rules.hide_image_requests)
+        self._act_hide_connects.setChecked(self._rules.hide_connects)
+        self._act_hide_304s.setChecked(self._rules.hide_304s)
+        self._act_bp_req.setChecked(self._rules.breakpoint_requests)
+        self._act_bp_resp.setChecked(self._rules.breakpoint_responses)
+        self._act_gzip.setChecked(self._rules.apply_gzip)
+        self._act_remove_enc.setChecked(self._rules.remove_encodings)
+        self._act_japanese.setChecked(self._rules.request_japanese)
+        self._act_auto_auth.setChecked(self._rules.auto_authenticate)
+        self._act_proxy_auth.setChecked(self._rules.require_proxy_auth)
+
+    # ── Breakpoint slot ───────────────────────────────────────────────────────
+
+    @Slot(int)
+    def _on_breakpoint(self, session_id: int):
+        session = self._engine.get_pending_session(session_id)
+        if session is None:
+            self._engine.resume_breakpoint(session_id)
+            return
+        dlg = BreakpointDialog(session, self)
+        dlg.exec()
+        if dlg.was_aborted():
+            self._engine.resume_breakpoint(session_id)
+        else:
+            self._engine.resume_breakpoint(
+                session_id,
+                modified_headers=dlg.get_modified_headers(),
+                modified_body=dlg.get_modified_body(),
+            )
 
     # ── Slots ─────────────────────────────────────────────────────────────────
 
@@ -241,7 +391,7 @@ class MainWindow(QMainWindow):
 
     @Slot(str)
     def _on_status_changed(self, status: str):
-        pass  # status managed by _on_start / _on_stop
+        pass
 
     @Slot(str)
     def _on_process_changed(self, text: str):
@@ -472,15 +622,11 @@ class MainWindow(QMainWindow):
             self._update_title()
 
     def _update_title(self):
-        if self._current_file:
-            name = Path(self._current_file).name
-        else:
-            name = "새 세션"
+        name = Path(self._current_file).name if self._current_file else "새 세션"
         suffix = " *" if self._modified else ""
         self.setWindowTitle(f"NetScope — {name}{suffix}")
 
     def _confirm_discard(self) -> bool:
-        """변경 사항이 있으면 저장 여부를 묻고, 계속 진행 여부를 반환합니다."""
         if not self._modified:
             return True
         answer = QMessageBox.question(
@@ -494,10 +640,10 @@ class MainWindow(QMainWindow):
         )
         if answer == QMessageBox.StandardButton.Save:
             self._on_save()
-            return not self._modified  # 저장 성공 시 True
+            return not self._modified
         if answer == QMessageBox.StandardButton.Discard:
             return True
-        return False  # Cancel
+        return False
 
     # ── Style ─────────────────────────────────────────────────────────────────
 
@@ -541,6 +687,10 @@ class MainWindow(QMainWindow):
             }
             QMenu::item:disabled {
                 color: #aaaaaa;
+            }
+            QMenu::item:checked {
+                color: #0078d4;
+                font-weight: bold;
             }
             QMenu::separator {
                 height: 1px;

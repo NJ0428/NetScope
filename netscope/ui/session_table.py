@@ -9,6 +9,11 @@ class SessionFilterProxy(QSortFilterProxyModel):
         super().__init__(parent)
         self._filter_text = ""
         self._process_filter = ""
+        self._rules = None  # RulesEngine reference (optional)
+
+    def set_rules(self, rules):
+        self._rules = rules
+        self._rules.rules_changed.connect(self.invalidateFilter)
 
     def set_filter_text(self, text: str):
         self._filter_text = text.lower()
@@ -23,10 +28,28 @@ class SessionFilterProxy(QSortFilterProxyModel):
         session = model.get_session(source_row)
         if session is None:
             return False
+
+        # ── Rules-based filters ───────────────────────────────────────────
+        if self._rules:
+            if self._rules.hide_image_requests:
+                ct = (session.content_type or "").lower()
+                if ct.startswith("image/"):
+                    return False
+
+            if self._rules.hide_connects and session.method == "CONNECT":
+                return False
+
+            if self._rules.hide_304s and session.status_code == 304:
+                return False
+
+        # ── Text filter ───────────────────────────────────────────────────
         if self._filter_text:
-            searchable = f"{session.scheme} {session.host} {session.path} {session.status_code}".lower()
+            searchable = (
+                f"{session.scheme} {session.host} {session.path} {session.status_code}"
+            ).lower()
             if self._filter_text not in searchable:
                 return False
+
         return True
 
 
@@ -51,11 +74,10 @@ class SessionTableView(QTableView):
         header = self.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         header.setStretchLastSection(True)
-        self.setColumnWidth(0, 45)    # #
-        self.setColumnWidth(1, 55)    # Result
-        self.setColumnWidth(2, 65)    # Protocol
-        self.setColumnWidth(3, 180)   # Host
-        # URL stretches
+        self.setColumnWidth(0, 45)
+        self.setColumnWidth(1, 55)
+        self.setColumnWidth(2, 65)
+        self.setColumnWidth(3, 180)
 
         self.setStyleSheet("""
             QTableView {
@@ -88,6 +110,9 @@ class SessionTableView(QTableView):
         """)
 
         self.selectionModel().currentRowChanged.connect(self._on_row_changed)
+
+    def set_rules(self, rules):
+        self._proxy.set_rules(rules)
 
     def set_filter(self, text: str):
         self._proxy.set_filter_text(text)
