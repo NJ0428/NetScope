@@ -26,6 +26,7 @@ class SessionEntry:
     request_body: bytes = b""
     response_headers: dict[str, str] = field(default_factory=dict)
     response_body: bytes = b""
+    mark_color: str | None = None
 
     @property
     def size_display(self) -> str:

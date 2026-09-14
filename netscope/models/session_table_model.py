@@ -1,4 +1,5 @@
 from PySide6.QtCore import Qt, QAbstractTableModel, QModelIndex
+from PySide6.QtGui import QColor
 
 from netscope.models.session import SessionEntry, SessionState
 
@@ -10,6 +11,7 @@ class SessionTableModel(QAbstractTableModel):
         super().__init__(parent)
         self._sessions: list[SessionEntry] = []
         self._next_id = 1
+        self._undo_stack: list[list[SessionEntry]] = []
 
     def rowCount(self, parent=QModelIndex()):
         return len(self._sessions)
@@ -38,7 +40,6 @@ class SessionTableModel(QAbstractTableModel):
                 case 4: return session.path
 
         if role == Qt.ItemDataRole.ForegroundRole:
-            from PySide6.QtGui import QColor
             if session.state == SessionState.ERROR or (col == 1 and session.status_code >= 500):
                 return QColor("#e74c3c")
             if col == 1 and session.status_code >= 400:
@@ -51,6 +52,10 @@ class SessionTableModel(QAbstractTableModel):
                 return QColor("#2ecc71")
             if col == 2 and session.scheme == "http":
                 return QColor("#f39c12")
+
+        if role == Qt.ItemDataRole.BackgroundRole:
+            if session.mark_color:
+                return QColor(session.mark_color)
 
         if role == Qt.ItemDataRole.TextAlignmentRole:
             if col in (0, 1):
@@ -87,6 +92,7 @@ class SessionTableModel(QAbstractTableModel):
         self.beginResetModel()
         self._sessions.clear()
         self._next_id = 1
+        self._undo_stack.clear()
         self.endResetModel()
 
     def get_all_sessions(self) -> list[SessionEntry]:
@@ -96,4 +102,45 @@ class SessionTableModel(QAbstractTableModel):
         self.beginResetModel()
         self._sessions = sessions
         self._next_id = max((s.id for s in sessions), default=0) + 1
+        self._undo_stack.clear()
         self.endResetModel()
+
+    # ── Edit menu support ─────────────────────────────────────────────────────
+
+    def remove_sessions_by_id(self, ids: set[int]) -> None:
+        to_remove = [s for s in self._sessions if s.id in ids]
+        if not to_remove:
+            return
+        self._undo_stack.append(to_remove)
+        self.beginResetModel()
+        self._sessions = [s for s in self._sessions if s.id not in ids]
+        self.endResetModel()
+
+    def restore_last_deleted(self) -> bool:
+        if not self._undo_stack:
+            return False
+        restored = self._undo_stack.pop()
+        self.beginResetModel()
+        self._sessions.extend(restored)
+        self._sessions.sort(key=lambda s: s.id)
+        self.endResetModel()
+        return True
+
+    def has_undo(self) -> bool:
+        return bool(self._undo_stack)
+
+    def notify_session_changed(self, session_id: int):
+        for row, s in enumerate(self._sessions):
+            if s.id == session_id:
+                self.dataChanged.emit(
+                    self.index(row, 0),
+                    self.index(row, self.columnCount() - 1),
+                )
+                return
+
+    def refresh_all(self):
+        if self._sessions:
+            self.dataChanged.emit(
+                self.index(0, 0),
+                self.index(self.rowCount() - 1, self.columnCount() - 1),
+            )
