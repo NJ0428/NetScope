@@ -1,6 +1,7 @@
 from PySide6.QtCore import Qt, Signal, QSortFilterProxyModel
 from PySide6.QtWidgets import QHeaderView, QTableView
 
+from netscope.models.session import SessionEntry
 from netscope.models.session_table_model import SessionTableModel
 
 
@@ -65,7 +66,7 @@ class SessionTableView(QTableView):
         self.setModel(self._proxy)
 
         self.setSelectionBehavior(QTableView.SelectionBehavior.SelectRows)
-        self.setSelectionMode(QTableView.SelectionMode.SingleSelection)
+        self.setSelectionMode(QTableView.SelectionMode.ExtendedSelection)
         self.setAlternatingRowColors(True)
         self.verticalHeader().setVisible(False)
         self.setShowGrid(False)
@@ -124,3 +125,26 @@ class SessionTableView(QTableView):
 
     def scroll_to_bottom(self):
         self.scrollToBottom()
+
+    def get_selected_sessions(self) -> list[SessionEntry]:
+        source_rows = {
+            self._proxy.mapToSource(idx).row()
+            for idx in self.selectionModel().selectedRows()
+        }
+        sessions = []
+        for row in sorted(source_rows):
+            s = self._source_model.get_session(row)
+            if s is not None:
+                sessions.append(s)
+        return sessions
+
+    def select_session_by_id(self, session_id: int):
+        for row in range(self._source_model.rowCount()):
+            s = self._source_model.get_session(row)
+            if s and s.id == session_id:
+                source_idx = self._source_model.index(row, 0)
+                proxy_idx = self._proxy.mapFromSource(source_idx)
+                if proxy_idx.isValid():
+                    self.setCurrentIndex(proxy_idx)
+                    self.scrollTo(proxy_idx)
+                break

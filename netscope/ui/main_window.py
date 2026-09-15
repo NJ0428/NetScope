@@ -5,8 +5,8 @@ from pathlib import Path
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
-    QFileDialog, QFrame, QLabel, QMainWindow, QMenu, QMessageBox,
-    QSplitter, QStackedWidget, QStatusBar, QVBoxLayout, QWidget,
+    QApplication, QFileDialog, QFrame, QLabel, QMainWindow, QMenu,
+    QMessageBox, QSplitter, QStackedWidget, QStatusBar, QVBoxLayout, QWidget,
 )
 
 from netscope.models.session import SessionEntry, SessionState
@@ -22,6 +22,10 @@ from netscope.ui.dialogs.user_agent_dialog import UserAgentDialog
 from netscope.ui.session_table import SessionTableView
 from netscope.ui.toolbar import Toolbar
 from netscope.ui.welcome_panel import WelcomePanel
+from netscope.utils.saz_reader import load_saz
+
+_RECENT_MAX = 10
+_CONFIG_PATH = Path.home() / ".netscope" / "config.json"
 
 _STATUS_IDLE    = "● 대기 중"
 _STATUS_CAPTURE = "● 캡처 중"
@@ -41,6 +45,7 @@ class MainWindow(QMainWindow):
         self._engine.set_rules(self._rules)
         self._current_file: str | None = None
         self._modified = False
+        self._recent_files: list[str] = _load_recent_config()
 
         self._setup_ui()
         self._setup_menu()
@@ -54,47 +59,177 @@ class MainWindow(QMainWindow):
 
         # 파일
         file_menu = mb.addMenu("파일")
-        act_new = QAction("새 세션", self, shortcut=QKeySequence.StandardKey.New)
+
+        # Capture Traffic (F12) — toggle capture start/stop
+        self._act_capture = QAction(
+            "트래픽 캡처 (Capture Traffic)", self,
+            shortcut=QKeySequence(Qt.Key.Key_F12),
+            checkable=True,
+        )
+        self._act_capture.triggered.connect(self._on_capture_toggle)
+        file_menu.addAction(self._act_capture)
+
+        file_menu.addSeparator()
+
+        # New Viewer — open a second independent window
+        act_new_viewer = QAction("새 뷰어 (New Viewer)", self)
+        act_new_viewer.triggered.connect(self._on_new_viewer)
+        file_menu.addAction(act_new_viewer)
+
+        # New Session — clear current session list
+        act_new = QAction("새 세션 (New Session)", self, shortcut=QKeySequence.StandardKey.New)
         act_new.triggered.connect(self._on_new)
         file_menu.addAction(act_new)
 
-        act_open = QAction("열기...", self, shortcut=QKeySequence.StandardKey.Open)
-        act_open.triggered.connect(self._on_open)
-        file_menu.addAction(act_open)
+        file_menu.addSeparator()
 
-        self._act_save = QAction("저장", self, shortcut=QKeySequence.StandardKey.Save)
+        # Load Archive — supports .netsession and Fiddler .saz
+        act_load = QAction(
+            "아카이브 불러오기 (Load Archive)...", self,
+            shortcut=QKeySequence.StandardKey.Open,
+        )
+        act_load.triggered.connect(self._on_load_archive)
+        file_menu.addAction(act_load)
+
+        # Recent Archives submenu
+        self._recent_menu = file_menu.addMenu("최근 아카이브 (Recent Archives)")
+        self._rebuild_recent_menu()
+
+        file_menu.addSeparator()
+
+        self._act_save = QAction("저장 (Save)", self, shortcut=QKeySequence.StandardKey.Save)
         self._act_save.triggered.connect(self._on_save)
         file_menu.addAction(self._act_save)
 
-        act_save_as = QAction("다른 이름으로 저장...", self, shortcut=QKeySequence("Ctrl+Shift+S"))
+        act_save_as = QAction(
+            "다른 이름으로 저장 (Save As)...", self,
+            shortcut=QKeySequence("Ctrl+Shift+S"),
+        )
         act_save_as.triggered.connect(self._on_save_as)
         file_menu.addAction(act_save_as)
 
         file_menu.addSeparator()
 
-        act_import = QAction("가져오기...", self)
+        act_import = QAction("세션 가져오기 (Import Sessions)...", self)
         act_import.triggered.connect(self._on_import)
         file_menu.addAction(act_import)
 
-        act_export = QAction("내보내기...", self)
+        act_export = QAction("세션 내보내기 (Export Sessions)...", self)
         act_export.triggered.connect(self._on_export)
         file_menu.addAction(act_export)
 
         file_menu.addSeparator()
-        act_quit = QAction("종료", self, shortcut=QKeySequence.StandardKey.Quit)
+
+        act_quit = QAction("종료 (Exit)", self, shortcut=QKeySequence.StandardKey.Quit)
         act_quit.triggered.connect(self.close)
         file_menu.addAction(act_quit)
 
         # 편집
         edit_menu = mb.addMenu("편집")
-        act_find = QAction("찾기", self, shortcut=QKeySequence.StandardKey.Find)
-        act_find.triggered.connect(self._on_find)
-        edit_menu.addAction(act_find)
+
+        # Copy submenu
+        copy_menu = edit_menu.addMenu("복사 (Copy)")
+
+        act_copy_url = QAction("URL 복사 (Copy URL)", self)
+        act_copy_url.triggered.connect(self._on_edit_copy_url)
+        copy_menu.addAction(act_copy_url)
+
+        act_copy_headers = QAction("헤더 복사 (Copy Headers)", self)
+        act_copy_headers.triggered.connect(self._on_edit_copy_headers)
+        copy_menu.addAction(act_copy_headers)
+
+        act_copy_request = QAction("요청 복사 (Copy Request)", self)
+        act_copy_request.triggered.connect(self._on_edit_copy_request)
+        copy_menu.addAction(act_copy_request)
+
+        act_copy_response = QAction("응답 복사 (Copy Response)", self)
+        act_copy_response.triggered.connect(self._on_edit_copy_response)
+        copy_menu.addAction(act_copy_response)
+
+        act_copy_full = QAction("전체 복사 (Copy Full Session)", self)
+        act_copy_full.triggered.connect(self._on_edit_copy_full)
+        copy_menu.addAction(act_copy_full)
+
         edit_menu.addSeparator()
-        edit_menu.addAction(QAction("복사", self, shortcut=QKeySequence.StandardKey.Copy))
-        edit_menu.addAction(QAction("전체 선택", self, shortcut=QKeySequence.StandardKey.SelectAll))
+
+        # Remove submenu
+        remove_menu = edit_menu.addMenu("삭제 (Remove)")
+
+        act_remove_selected = QAction(
+            "선택 세션 삭제 (Remove Selected)", self,
+            shortcut=QKeySequence(Qt.Key.Key_Delete),
+        )
+        act_remove_selected.triggered.connect(self._on_edit_remove_selected)
+        remove_menu.addAction(act_remove_selected)
+
+        act_remove_unselected = QAction("선택 외 세션 삭제 (Remove Unselected)", self)
+        act_remove_unselected.triggered.connect(self._on_edit_remove_unselected)
+        remove_menu.addAction(act_remove_unselected)
+
+        act_remove_all = QAction("모든 세션 삭제 (Remove All)", self)
+        act_remove_all.triggered.connect(self._on_edit_remove_all)
+        remove_menu.addAction(act_remove_all)
+
         edit_menu.addSeparator()
-        edit_menu.addAction(QAction("환경설정...", self))
+
+        act_select_all = QAction(
+            "전체 선택 (Select All)", self,
+            shortcut=QKeySequence.StandardKey.SelectAll,
+        )
+        act_select_all.triggered.connect(self._on_edit_select_all)
+        edit_menu.addAction(act_select_all)
+
+        edit_menu.addSeparator()
+
+        self._act_undelete = QAction("되돌리기 (Undelete)", self)
+        self._act_undelete.setEnabled(False)
+        self._act_undelete.triggered.connect(self._on_edit_undelete)
+        edit_menu.addAction(self._act_undelete)
+
+        edit_menu.addSeparator()
+
+        act_paste_sessions = QAction("세션으로 붙여넣기 (Paste as Sessions)", self)
+        act_paste_sessions.triggered.connect(self._on_edit_paste_as_sessions)
+        edit_menu.addAction(act_paste_sessions)
+
+        edit_menu.addSeparator()
+
+        # Mark submenu
+        mark_menu = edit_menu.addMenu("표시 (Mark)")
+        for _label, _color in [
+            ("빨강 (Red)",    "#ff6b6b"),
+            ("노랑 (Yellow)", "#ffd93d"),
+            ("초록 (Green)",  "#6bcb77"),
+            ("파랑 (Blue)",   "#4d96ff"),
+            ("보라 (Purple)", "#c77dff"),
+        ]:
+            _act = QAction(_label, self)
+            _act.triggered.connect(
+                lambda checked, c=_color: self._on_edit_mark(c)
+            )
+            mark_menu.addAction(_act)
+        mark_menu.addSeparator()
+        act_clear_mark = QAction("표시 지우기 (Clear Mark)", self)
+        act_clear_mark.triggered.connect(lambda checked: self._on_edit_mark(None))
+        mark_menu.addAction(act_clear_mark)
+
+        edit_menu.addSeparator()
+
+        act_unlock = QAction(
+            "편집 모드 (Unlock for Editing)", self,
+            shortcut=QKeySequence(Qt.Key.Key_F2),
+        )
+        act_unlock.triggered.connect(self._on_edit_unlock)
+        edit_menu.addAction(act_unlock)
+
+        edit_menu.addSeparator()
+
+        act_find_sessions = QAction(
+            "세션 찾기 (Find Sessions)", self,
+            shortcut=QKeySequence.StandardKey.Find,
+        )
+        act_find_sessions.triggered.connect(self._on_find_sessions)
+        edit_menu.addAction(act_find_sessions)
 
         # 규칙
         rules_menu = mb.addMenu("규칙")
@@ -350,18 +485,126 @@ class MainWindow(QMainWindow):
     # ── Slots ─────────────────────────────────────────────────────────────────
 
     @Slot()
-    def _on_start(self):
+    def _on_capture_toggle(self, checked: bool):
+        if checked:
+            self._start_capture()
+        else:
+            self._stop_capture()
+
+    @Slot()
+    def _on_new_viewer(self):
+        win = MainWindow()
+        win.show()
+        # Keep a reference so it isn't GC'd immediately
+        if not hasattr(QApplication.instance(), "_extra_windows"):
+            QApplication.instance()._extra_windows = []
+        QApplication.instance()._extra_windows.append(win)
+
+    @Slot()
+    def _on_load_archive(self):
+        if not self._confirm_discard():
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self, "아카이브 불러오기", "",
+            "지원 형식 (*.netsession *.saz);;"
+            "NetScope 세션 (*.netsession);;"
+            "Fiddler 아카이브 (*.saz);;"
+            "모든 파일 (*)",
+        )
+        if not path:
+            return
+        try:
+            if path.lower().endswith(".saz"):
+                sessions = load_saz(path)
+                self._session_model.load_sessions(sessions)
+                self._right_stack.setCurrentIndex(0)
+                self._count_label.setText(f"세션  {len(sessions)}")
+                self._current_file = None   # SAZ is read-only; don't overwrite
+                self._modified = False
+                self._update_title()
+            else:
+                self._load_file(path)
+            self._add_to_recent(path)
+        except Exception as exc:
+            QMessageBox.critical(self, "불러오기 실패", f"파일을 열 수 없습니다:\n{exc}")
+
+    def _add_to_recent(self, path: str):
+        path = str(Path(path).resolve())
+        if path in self._recent_files:
+            self._recent_files.remove(path)
+        self._recent_files.insert(0, path)
+        self._recent_files = self._recent_files[:_RECENT_MAX]
+        _save_recent_config(self._recent_files)
+        self._rebuild_recent_menu()
+
+    def _rebuild_recent_menu(self):
+        self._recent_menu.clear()
+        if not self._recent_files:
+            empty = QAction("(없음)", self)
+            empty.setEnabled(False)
+            self._recent_menu.addAction(empty)
+            return
+        for path in self._recent_files:
+            label = Path(path).name
+            act = QAction(label, self)
+            act.setToolTip(path)
+            act.triggered.connect(lambda checked, p=path: self._open_recent(p))
+            self._recent_menu.addAction(act)
+        self._recent_menu.addSeparator()
+        act_clear = QAction("목록 지우기", self)
+        act_clear.triggered.connect(self._clear_recent)
+        self._recent_menu.addAction(act_clear)
+
+    def _open_recent(self, path: str):
+        if not Path(path).exists():
+            QMessageBox.warning(self, "파일 없음", f"파일을 찾을 수 없습니다:\n{path}")
+            self._recent_files = [p for p in self._recent_files if p != path]
+            _save_recent_config(self._recent_files)
+            self._rebuild_recent_menu()
+            return
+        if not self._confirm_discard():
+            return
+        try:
+            if path.lower().endswith(".saz"):
+                sessions = load_saz(path)
+                self._session_model.load_sessions(sessions)
+                self._right_stack.setCurrentIndex(0)
+                self._count_label.setText(f"세션  {len(sessions)}")
+                self._current_file = None
+                self._modified = False
+                self._update_title()
+            else:
+                self._load_file(path)
+            self._add_to_recent(path)
+        except Exception as exc:
+            QMessageBox.critical(self, "열기 실패", f"파일을 열 수 없습니다:\n{exc}")
+
+    def _clear_recent(self):
+        self._recent_files.clear()
+        _save_recent_config(self._recent_files)
+        self._rebuild_recent_menu()
+
+    def _start_capture(self):
         self._toolbar.set_capturing(True)
+        self._act_capture.setChecked(True)
         self._cap_label.setText(_STATUS_CAPTURE)
         self._cap_label.setStyleSheet("color: #27ae60; font-weight: bold;")
         self._engine.start(self._proxy_port)
 
-    @Slot()
-    def _on_stop(self):
+    def _stop_capture(self):
         self._engine.stop()
         self._toolbar.set_capturing(False)
+        self._act_capture.setChecked(False)
         self._cap_label.setText(_STATUS_IDLE)
         self._cap_label.setStyleSheet("color: #666666;")
+
+    @Slot()
+    def _on_start(self):
+        self._start_capture()
+
+    @Slot()
+    def _on_stop(self):
+        self._stop_capture()
 
     @Slot()
     def _on_clear(self):
@@ -398,9 +641,218 @@ class MainWindow(QMainWindow):
         label = "전체" if text == "전체 프로세스" else text
         self._process_label.setText(f"프로세스  {label}")
 
+    # ── Edit menu slots ───────────────────────────────────────────────────────
+
     @Slot()
-    def _on_find(self):
-        self._toolbar.focus_search()
+    def _on_edit_copy_url(self):
+        sessions = self._table_view.get_selected_sessions()
+        if sessions:
+            QApplication.clipboard().setText("\n".join(s.url for s in sessions))
+
+    @Slot()
+    def _on_edit_copy_headers(self):
+        sessions = self._table_view.get_selected_sessions()
+        if not sessions:
+            return
+        parts = []
+        for s in sessions:
+            parts.append(f"=== Session #{s.id} ===")
+            parts.append("Request Headers:")
+            parts.extend(f"  {k}: {v}" for k, v in s.request_headers.items())
+            parts.append("Response Headers:")
+            parts.extend(f"  {k}: {v}" for k, v in s.response_headers.items())
+        QApplication.clipboard().setText("\n".join(parts))
+
+    @Slot()
+    def _on_edit_copy_request(self):
+        sessions = self._table_view.get_selected_sessions()
+        if not sessions:
+            return
+        parts = []
+        for s in sessions:
+            parts.append(f"{s.method} {s.path} HTTP/1.1")
+            parts.extend(f"{k}: {v}" for k, v in s.request_headers.items())
+            parts.append("")
+            if s.request_body:
+                parts.append(s.request_body.decode("utf-8", errors="replace"))
+        QApplication.clipboard().setText("\n".join(parts))
+
+    @Slot()
+    def _on_edit_copy_response(self):
+        sessions = self._table_view.get_selected_sessions()
+        if not sessions:
+            return
+        parts = []
+        for s in sessions:
+            parts.append(f"HTTP/1.1 {s.status_code}")
+            parts.extend(f"{k}: {v}" for k, v in s.response_headers.items())
+            parts.append("")
+            if s.response_body:
+                parts.append(s.response_body.decode("utf-8", errors="replace"))
+        QApplication.clipboard().setText("\n".join(parts))
+
+    @Slot()
+    def _on_edit_copy_full(self):
+        sessions = self._table_view.get_selected_sessions()
+        if not sessions:
+            return
+        parts = []
+        for s in sessions:
+            parts.append(f"=== Session #{s.id}: {s.method} {s.url} ===")
+            parts.append(f"Status: {s.status_code}")
+            parts.append("")
+            parts.append("--- Request Headers ---")
+            parts.extend(f"{k}: {v}" for k, v in s.request_headers.items())
+            if s.request_body:
+                parts.append("")
+                parts.append("--- Request Body ---")
+                parts.append(s.request_body.decode("utf-8", errors="replace"))
+            parts.append("")
+            parts.append("--- Response Headers ---")
+            parts.extend(f"{k}: {v}" for k, v in s.response_headers.items())
+            if s.response_body:
+                parts.append("")
+                parts.append("--- Response Body ---")
+                parts.append(s.response_body.decode("utf-8", errors="replace"))
+            parts.append("")
+        QApplication.clipboard().setText("\n".join(parts))
+
+    @Slot()
+    def _on_edit_remove_selected(self):
+        sessions = self._table_view.get_selected_sessions()
+        if not sessions:
+            return
+        self._session_model.remove_sessions_by_id({s.id for s in sessions})
+        self._right_stack.setCurrentIndex(0)
+        self._count_label.setText(f"세션  {self._session_model.rowCount()}")
+        self._act_undelete.setEnabled(True)
+        self._mark_modified()
+
+    @Slot()
+    def _on_edit_remove_unselected(self):
+        selected = self._table_view.get_selected_sessions()
+        if not selected:
+            return
+        selected_ids = {s.id for s in selected}
+        ids_to_remove = {
+            s.id for s in self._session_model.get_all_sessions()
+            if s.id not in selected_ids
+        }
+        if ids_to_remove:
+            self._session_model.remove_sessions_by_id(ids_to_remove)
+            self._right_stack.setCurrentIndex(0)
+            self._count_label.setText(f"세션  {self._session_model.rowCount()}")
+            self._act_undelete.setEnabled(True)
+            self._mark_modified()
+
+    @Slot()
+    def _on_edit_remove_all(self):
+        all_sessions = self._session_model.get_all_sessions()
+        if not all_sessions:
+            return
+        self._session_model.remove_sessions_by_id({s.id for s in all_sessions})
+        self._right_stack.setCurrentIndex(0)
+        self._count_label.setText("세션  0")
+        self._act_undelete.setEnabled(True)
+        self._mark_modified()
+
+    @Slot()
+    def _on_edit_select_all(self):
+        self._table_view.selectAll()
+
+    @Slot()
+    def _on_edit_undelete(self):
+        if self._session_model.restore_last_deleted():
+            self._count_label.setText(f"세션  {self._session_model.rowCount()}")
+            self._mark_modified()
+        if not self._session_model.has_undo():
+            self._act_undelete.setEnabled(False)
+
+    @Slot()
+    def _on_edit_paste_as_sessions(self):
+        text = QApplication.clipboard().text()
+        if not text.strip():
+            QMessageBox.information(self, "붙여넣기", "클립보드에 HTTP 데이터가 없습니다.")
+            return
+        sessions = self._parse_http_from_clipboard(text)
+        if not sessions:
+            QMessageBox.warning(
+                self, "붙여넣기 실패",
+                "클립보드 내용을 HTTP 세션으로 파싱할 수 없습니다.\n\n"
+                "형식 예시:\n  GET /path HTTP/1.1\n  Host: example.com\n  ...",
+            )
+            return
+        for s in sessions:
+            self._session_model.add_session(s)
+        self._count_label.setText(f"세션  {self._session_model.rowCount()}")
+        self._table_view.scroll_to_bottom()
+        self._mark_modified()
+
+    def _on_edit_mark(self, color: str | None):
+        sessions = self._table_view.get_selected_sessions()
+        if not sessions:
+            return
+        for s in sessions:
+            s.mark_color = color
+        self._session_model.refresh_all()
+        self._mark_modified()
+
+    @Slot()
+    def _on_edit_unlock(self):
+        sessions = self._table_view.get_selected_sessions()
+        if not sessions:
+            QMessageBox.information(self, "편집 모드", "편집할 세션을 먼저 선택하세요.")
+            return
+        from netscope.ui.dialogs.edit_session_dialog import EditSessionDialog
+        dlg = EditSessionDialog(sessions[0], self)
+        if dlg.exec():
+            self._session_model.notify_session_changed(sessions[0].id)
+            self._detail_panel.show_session(sessions[0])
+            self._mark_modified()
+
+    @Slot()
+    def _on_find_sessions(self):
+        from netscope.ui.dialogs.find_sessions_dialog import FindSessionsDialog
+        dlg = FindSessionsDialog(self._session_model.get_all_sessions(), self)
+        dlg.session_selected.connect(self._table_view.select_session_by_id)
+        dlg.exec()
+
+    def _parse_http_from_clipboard(self, text: str) -> list[SessionEntry]:
+        _METHODS = {"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS", "CONNECT", "TRACE"}
+        lines = text.replace("\r\n", "\n").split("\n")
+        if not lines:
+            return []
+        req_parts = lines[0].strip().split(" ", 2)
+        if len(req_parts) < 2 or req_parts[0].upper() not in _METHODS:
+            return []
+        method = req_parts[0].upper()
+        path = req_parts[1]
+        headers: dict[str, str] = {}
+        body_start = len(lines)
+        for i, line in enumerate(lines[1:], start=1):
+            if line.strip() == "":
+                body_start = i + 1
+                break
+            if ": " in line:
+                k, _, v = line.partition(": ")
+                k = k.strip()
+                if k:
+                    headers[k] = v.strip()
+        body = "\n".join(lines[body_start:]).strip()
+        host = headers.get("Host", "")
+        scheme = "https" if host.endswith(":443") else "http"
+        url = f"{scheme}://{host}{path}" if host else path
+        return [SessionEntry(
+            id=0,
+            method=method,
+            scheme=scheme,
+            host=host,
+            path=path,
+            url=url,
+            state=SessionState.PENDING,
+            request_headers=headers,
+            request_body=body.encode("utf-8"),
+        )]
 
     # ── File operations ───────────────────────────────────────────────────────
 
@@ -419,21 +871,6 @@ class MainWindow(QMainWindow):
         self._current_file = None
         self._modified = False
         self._update_title()
-
-    @Slot()
-    def _on_open(self):
-        if not self._confirm_discard():
-            return
-        path, _ = QFileDialog.getOpenFileName(
-            self, "세션 열기", "",
-            "NetScope 세션 (*.netsession);;모든 파일 (*)",
-        )
-        if not path:
-            return
-        try:
-            self._load_file(path)
-        except Exception as exc:
-            QMessageBox.critical(self, "열기 실패", f"파일을 열 수 없습니다:\n{exc}")
 
     @Slot()
     def _on_save(self):
@@ -521,6 +958,7 @@ class MainWindow(QMainWindow):
         self._current_file = path
         self._modified = False
         self._update_title()
+        self._add_to_recent(path)
 
     def _import_har(self, path: str):
         with open(path, "r", encoding="utf-8") as f:
@@ -794,6 +1232,25 @@ def _session_from_dict(d: dict) -> SessionEntry:
         response_headers=d.get("response_headers", {}),
         response_body=base64.b64decode(d.get("response_body", "")),
     )
+
+
+# ── Recent-files config ───────────────────────────────────────────────────────
+
+def _load_recent_config() -> list[str]:
+    try:
+        with open(_CONFIG_PATH, "r", encoding="utf-8") as f:
+            return json.load(f).get("recent_files", [])
+    except Exception:
+        return []
+
+
+def _save_recent_config(recent: list[str]) -> None:
+    try:
+        _CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(_CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump({"recent_files": recent}, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass  # Non-fatal; config write failures are silently ignored
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
