@@ -2,18 +2,26 @@ import base64
 import json
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Slot
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtCore import QEvent, Qt, Slot
+from PySide6.QtGui import QAction, QActionGroup, QIcon, QKeySequence
 from PySide6.QtWidgets import (
     QApplication, QFileDialog, QFrame, QLabel, QMainWindow, QMenu,
-    QMessageBox, QSplitter, QStackedWidget, QStatusBar, QVBoxLayout, QWidget,
+    QMessageBox, QSplitter, QStackedWidget, QStatusBar, QTabWidget,
+    QVBoxLayout, QWidget,
 )
+try:
+    from PySide6.QtWidgets import QSystemTrayIcon
+    _TRAY_AVAILABLE = True
+except ImportError:
+    _TRAY_AVAILABLE = False
 
 from netscope.models.session import SessionEntry, SessionState
 from netscope.models.session_table_model import SessionTableModel
 from netscope.proxy.engine import ProxyEngine, StubProxyEngine
 from netscope.rules.rules_engine import RulesEngine
+from netscope.ui.composer_panel import ComposerPanel
 from netscope.ui.detail_panel import DetailPanel
+from netscope.ui.statistics_panel import StatisticsPanel
 from netscope.ui.dialogs.breakpoint_dialog import BreakpointDialog
 from netscope.ui.dialogs.customize_rules_dialog import CustomizeRulesDialog
 from netscope.ui.dialogs.performance_dialog import PerformanceDialog
@@ -46,6 +54,8 @@ class MainWindow(QMainWindow):
         self._current_file: str | None = None
         self._modified = False
         self._recent_files: list[str] = _load_recent_config()
+        self._auto_scroll = True
+        self._tray_icon = None
 
         self._setup_ui()
         self._setup_menu()
@@ -340,14 +350,101 @@ class MainWindow(QMainWindow):
 
         # 보기
         view_menu = mb.addMenu("보기")
-        act_toolbar = QAction("툴바", self, checkable=True, checked=True)
-        act_toolbar.triggered.connect(lambda v: self._toolbar.setVisible(v))
-        view_menu.addAction(act_toolbar)
-        act_status = QAction("상태 표시줄", self, checkable=True, checked=True)
-        act_status.triggered.connect(lambda v: self._status_bar.setVisible(v))
-        view_menu.addAction(act_status)
+
+        act_show_toolbar = QAction("툴바 표시 (Show Toolbar)", self, checkable=True, checked=True)
+        act_show_toolbar.triggered.connect(lambda v: self._toolbar.setVisible(v))
+        view_menu.addAction(act_show_toolbar)
+
         view_menu.addSeparator()
-        view_menu.addAction(QAction("레이아웃 초기화", self))
+
+        # Layout (exclusive group)
+        layout_group = QActionGroup(self)
+        layout_group.setExclusive(True)
+
+        self._act_layout_default = QAction(
+            "기본 레이아웃 (Default Layout)", self, checkable=True, checked=True)
+        self._act_layout_default.triggered.connect(lambda: self._apply_layout("default"))
+        layout_group.addAction(self._act_layout_default)
+        view_menu.addAction(self._act_layout_default)
+
+        self._act_layout_stacked = QAction("세로 레이아웃 (Stacked Layout)", self, checkable=True)
+        self._act_layout_stacked.triggered.connect(lambda: self._apply_layout("stacked"))
+        layout_group.addAction(self._act_layout_stacked)
+        view_menu.addAction(self._act_layout_stacked)
+
+        self._act_layout_wide = QAction("넓은 레이아웃 (Wide Layout)", self, checkable=True)
+        self._act_layout_wide.triggered.connect(lambda: self._apply_layout("wide"))
+        layout_group.addAction(self._act_layout_wide)
+        view_menu.addAction(self._act_layout_wide)
+
+        view_menu.addSeparator()
+
+        # Tabs sub-menu
+        tabs_menu = view_menu.addMenu("탭 (Tabs)")
+
+        self._act_tab_stats = QAction("통계 (Statistics)", self, checkable=True, checked=True)
+        self._act_tab_stats.triggered.connect(
+            lambda v: self._toggle_right_tab(self._stats_panel, "통계", v))
+        tabs_menu.addAction(self._act_tab_stats)
+
+        self._act_tab_insp = QAction("인스펙터 (Inspectors)", self, checkable=True, checked=True)
+        self._act_tab_insp.triggered.connect(
+            lambda v: self._toggle_right_tab(self._inspector_container, "인스펙터", v))
+        tabs_menu.addAction(self._act_tab_insp)
+
+        self._act_tab_composer = QAction("컴포저 (Composer)", self, checkable=True, checked=True)
+        self._act_tab_composer.triggered.connect(
+            lambda v: self._toggle_right_tab(self._composer_panel, "컴포저", v))
+        tabs_menu.addAction(self._act_tab_composer)
+
+        view_menu.addSeparator()
+
+        act_statistics = QAction(
+            "통계 (Statistics)", self, shortcut=QKeySequence(Qt.Key.Key_F7))
+        act_statistics.triggered.connect(lambda: self._switch_right_panel(self._stats_panel))
+        view_menu.addAction(act_statistics)
+
+        act_inspectors = QAction(
+            "인스펙터 (Inspectors)", self, shortcut=QKeySequence(Qt.Key.Key_F8))
+        act_inspectors.triggered.connect(
+            lambda: self._switch_right_panel(self._inspector_container))
+        view_menu.addAction(act_inspectors)
+
+        act_composer_view = QAction(
+            "컴포저 (Composer)", self, shortcut=QKeySequence(Qt.Key.Key_F9))
+        act_composer_view.triggered.connect(
+            lambda: self._switch_right_panel(self._composer_panel))
+        view_menu.addAction(act_composer_view)
+
+        view_menu.addSeparator()
+
+        self._act_min_tray = QAction(
+            "트레이로 최소화 (Minimize to Tray)", self, checkable=True)
+        view_menu.addAction(self._act_min_tray)
+
+        act_stay_top = QAction("항상 위 (Stay on Top)", self, checkable=True)
+        act_stay_top.triggered.connect(self._on_stay_on_top)
+        view_menu.addAction(act_stay_top)
+
+        view_menu.addSeparator()
+
+        act_squish = QAction(
+            "세션 목록 압축 (Squish Session List)", self,
+            shortcut=QKeySequence(Qt.Key.Key_F6), checkable=True)
+        act_squish.triggered.connect(self._on_squish_sessions)
+        view_menu.addAction(act_squish)
+
+        self._act_autoscroll = QAction(
+            "자동 스크롤 (AutoScroll Session List)", self, checkable=True, checked=True)
+        self._act_autoscroll.triggered.connect(self._on_autoscroll_toggle)
+        view_menu.addAction(self._act_autoscroll)
+
+        view_menu.addSeparator()
+
+        act_refresh = QAction(
+            "새로 고침 (Refresh)", self, shortcut=QKeySequence(Qt.Key.Key_F5))
+        act_refresh.triggered.connect(self._on_refresh)
+        view_menu.addAction(act_refresh)
 
         # 도움말
         help_menu = mb.addMenu("도움말")
@@ -375,19 +472,41 @@ class MainWindow(QMainWindow):
         self._table_view = SessionTableView(self._session_model)
         self._h_splitter.addWidget(self._table_view)
 
+        # Right side: tabbed panel (Statistics / Inspectors / Composer)
+        self._right_tabs = QTabWidget()
+        self._right_tabs.setDocumentMode(True)
+        self._right_tabs.currentChanged.connect(self._on_right_tab_changed)
+
+        self._stats_panel = StatisticsPanel()
+        self._right_tabs.addTab(self._stats_panel, "통계")
+
+        # Inspectors tab wraps the welcome/detail stack
+        self._inspector_container = QWidget()
+        _insp_layout = QVBoxLayout(self._inspector_container)
+        _insp_layout.setContentsMargins(0, 0, 0, 0)
+        _insp_layout.setSpacing(0)
         self._right_stack = QStackedWidget()
         self._welcome_panel = WelcomePanel()
         self._detail_panel  = DetailPanel()
         self._right_stack.addWidget(self._welcome_panel)
         self._right_stack.addWidget(self._detail_panel)
         self._right_stack.setCurrentIndex(0)
+        _insp_layout.addWidget(self._right_stack)
+        self._right_tabs.addTab(self._inspector_container, "인스펙터")
 
-        self._h_splitter.addWidget(self._right_stack)
+        self._composer_panel = ComposerPanel()
+        self._right_tabs.addTab(self._composer_panel, "컴포저")
+
+        self._right_tabs.setCurrentIndex(1)   # default to Inspectors
+
+        self._h_splitter.addWidget(self._right_tabs)
         self._h_splitter.setSizes([360, 1040])
         self._h_splitter.setStretchFactor(0, 0)
         self._h_splitter.setStretchFactor(1, 1)
 
         root_layout.addWidget(self._h_splitter, stretch=1)
+
+        self._setup_tray()
 
         self._status_bar = QStatusBar()
         self._status_bar.setSizeGripEnabled(False)
@@ -620,12 +739,14 @@ class MainWindow(QMainWindow):
         if session:
             self._detail_panel.show_session(session)
             self._right_stack.setCurrentIndex(1)
+            self._switch_right_panel(self._inspector_container)
 
     @Slot(SessionEntry)
     def _on_session_started(self, session: SessionEntry):
         self._session_model.add_session(session)
         self._count_label.setText(f"세션  {self._session_model.rowCount()}")
-        self._table_view.scroll_to_bottom()
+        if self._auto_scroll:
+            self._table_view.scroll_to_bottom()
         self._mark_modified()
 
     @Slot(int, dict)
@@ -1082,6 +1203,122 @@ class MainWindow(QMainWindow):
         if answer == QMessageBox.StandardButton.Discard:
             return True
         return False
+
+    # ── Tray icon setup ───────────────────────────────────────────────────────
+
+    def _setup_tray(self):
+        if not _TRAY_AVAILABLE:
+            return
+        _icon_path = (
+            Path(__file__).parent.parent / "resources" / "icons" / "NetScope_32x32.png"
+        )
+        icon = QIcon(str(_icon_path)) if _icon_path.exists() else QIcon()
+        self._tray_icon = QSystemTrayIcon(icon, self)
+        self._tray_icon.setToolTip("NetScope")
+
+        tray_menu = QMenu(self)
+        act_restore = QAction("열기 (Restore)", self)
+        act_restore.triggered.connect(self._restore_from_tray)
+        tray_menu.addAction(act_restore)
+        tray_menu.addSeparator()
+        act_tray_quit = QAction("종료 (Exit)", self)
+        act_tray_quit.triggered.connect(QApplication.instance().quit)
+        tray_menu.addAction(act_tray_quit)
+
+        self._tray_icon.setContextMenu(tray_menu)
+        self._tray_icon.activated.connect(self._on_tray_activated)
+
+    def _restore_from_tray(self):
+        if self._tray_icon:
+            self._tray_icon.hide()
+        self.showNormal()
+        self.activateWindow()
+
+    @Slot(object)
+    def _on_tray_activated(self, reason):
+        if _TRAY_AVAILABLE and reason == QSystemTrayIcon.ActivationReason.DoubleClick:
+            self._restore_from_tray()
+
+    def changeEvent(self, event):
+        if (event.type() == QEvent.Type.WindowStateChange
+                and self.isMinimized()
+                and self._tray_icon is not None
+                and self._act_min_tray.isChecked()):
+            event.ignore()
+            self.hide()
+            self._tray_icon.show()
+            return
+        super().changeEvent(event)
+
+    # ── View menu slots ───────────────────────────────────────────────────────
+
+    def _apply_layout(self, layout: str):
+        if layout == "default":
+            self._h_splitter.setOrientation(Qt.Orientation.Horizontal)
+            self._h_splitter.setSizes([360, 1040])
+            self._h_splitter.setStretchFactor(0, 0)
+            self._h_splitter.setStretchFactor(1, 1)
+        elif layout == "stacked":
+            self._h_splitter.setOrientation(Qt.Orientation.Vertical)
+            self._h_splitter.setSizes([260, 560])
+            self._h_splitter.setStretchFactor(0, 0)
+            self._h_splitter.setStretchFactor(1, 1)
+        elif layout == "wide":
+            self._h_splitter.setOrientation(Qt.Orientation.Horizontal)
+            self._h_splitter.setSizes([200, 1200])
+            self._h_splitter.setStretchFactor(0, 0)
+            self._h_splitter.setStretchFactor(1, 1)
+
+    def _switch_right_panel(self, widget: QWidget):
+        idx = self._right_tabs.indexOf(widget)
+        if idx >= 0:
+            self._right_tabs.setCurrentIndex(idx)
+
+    def _toggle_right_tab(self, widget: QWidget, title: str, visible: bool):
+        idx = self._right_tabs.indexOf(widget)
+        if visible and idx == -1:
+            # Re-insert at the canonical position
+            _order = [self._stats_panel, self._inspector_container, self._composer_panel]
+            insert_pos = sum(
+                1 for p in _order
+                if p is not widget and self._right_tabs.indexOf(p) >= 0
+                and _order.index(p) < _order.index(widget)
+            )
+            self._right_tabs.insertTab(insert_pos, widget, title)
+        elif not visible and idx >= 0:
+            self._right_tabs.removeTab(idx)
+
+    @Slot(int)
+    def _on_right_tab_changed(self, index: int):
+        widget = self._right_tabs.widget(index)
+        if widget is self._stats_panel:
+            self._stats_panel.update_stats(self._session_model.get_all_sessions())
+
+    @Slot(bool)
+    def _on_stay_on_top(self, checked: bool):
+        flags = self.windowFlags()
+        if checked:
+            flags |= Qt.WindowType.WindowStaysOnTopHint
+        else:
+            flags &= ~Qt.WindowType.WindowStaysOnTopHint
+        self.setWindowFlags(flags)
+        self.show()
+
+    @Slot(bool)
+    def _on_squish_sessions(self, checked: bool):
+        self._table_view.set_squished(checked)
+
+    @Slot(bool)
+    def _on_autoscroll_toggle(self, checked: bool):
+        self._auto_scroll = checked
+
+    @Slot()
+    def _on_refresh(self):
+        self._session_model.refresh_all()
+        self._count_label.setText(f"세션  {self._session_model.rowCount()}")
+        widget = self._right_tabs.currentWidget()
+        if widget is self._stats_panel:
+            self._stats_panel.update_stats(self._session_model.get_all_sessions())
 
     # ── Style ─────────────────────────────────────────────────────────────────
 
