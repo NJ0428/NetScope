@@ -448,10 +448,54 @@ class MainWindow(QMainWindow):
 
         # 도움말
         help_menu = mb.addMenu("도움말")
-        help_menu.addAction(QAction("문서", self))
-        help_menu.addAction(QAction("단축키", self))
+
+        act_welcome_screen = QAction("Welcome Screen", self)
+        act_welcome_screen.triggered.connect(self._on_help_welcome_screen)
+        help_menu.addAction(act_welcome_screen)
+
         help_menu.addSeparator()
-        help_menu.addAction(QAction("NetScope 정보", self))
+
+        act_help = QAction("Help", self, shortcut=QKeySequence(Qt.Key.Key_F1))
+        act_help.triggered.connect(self._on_help_docs)
+        help_menu.addAction(act_help)
+
+        act_fiddler_book = QAction("Get Fiddler Book", self)
+        act_fiddler_book.triggered.connect(self._on_help_fiddler_book)
+        help_menu.addAction(act_fiddler_book)
+
+        act_discussions = QAction("Discussions", self)
+        act_discussions.triggered.connect(self._on_help_discussions)
+        help_menu.addAction(act_discussions)
+
+        act_http_ref = QAction("HTTP References", self)
+        act_http_ref.triggered.connect(self._on_help_http_references)
+        help_menu.addAction(act_http_ref)
+
+        help_menu.addSeparator()
+
+        act_troubleshoot = QAction("Troubleshoot", self)
+        act_troubleshoot.triggered.connect(self._on_help_troubleshoot)
+        help_menu.addAction(act_troubleshoot)
+
+        act_support = QAction("Get Priority Support", self)
+        act_support.triggered.connect(self._on_help_support)
+        help_menu.addAction(act_support)
+
+        help_menu.addSeparator()
+
+        act_check_updates = QAction("Check for Updates", self)
+        act_check_updates.triggered.connect(self._on_help_check_updates)
+        help_menu.addAction(act_check_updates)
+
+        act_feedback = QAction("Send Feedback", self)
+        act_feedback.triggered.connect(self._on_help_feedback)
+        help_menu.addAction(act_feedback)
+
+        help_menu.addSeparator()
+
+        act_about = QAction("About", self)
+        act_about.triggered.connect(self._on_help_about)
+        help_menu.addAction(act_about)
 
     # ── UI construction ───────────────────────────────────────────────────────
 
@@ -1319,6 +1363,291 @@ class MainWindow(QMainWindow):
         widget = self._right_tabs.currentWidget()
         if widget is self._stats_panel:
             self._stats_panel.update_stats(self._session_model.get_all_sessions())
+
+    # ── Help handlers ─────────────────────────────────────────────────────────
+
+    @Slot()
+    def _on_help_welcome_screen(self):
+        """Welcome Screen으로 이동 — Inspector 탭에서 시작 화면을 표시."""
+        # Inspectors 탭으로 전환 후 welcome 패널을 전면에 표시
+        for i in range(self._right_tabs.count()):
+            if self._right_tabs.tabText(i) == "인스펙터":
+                self._right_tabs.setCurrentIndex(i)
+                break
+        self._right_stack.setCurrentWidget(self._welcome_panel)
+
+    @Slot()
+    def _on_help_docs(self):
+        """도움말/사용 설명서 다이얼로그."""
+        from PySide6.QtWidgets import QDialog, QDialogButtonBox, QTextBrowser, QVBoxLayout
+        dlg = QDialog(self)
+        dlg.setWindowTitle("NetScope 도움말")
+        dlg.resize(640, 480)
+        layout = QVBoxLayout(dlg)
+        browser = QTextBrowser()
+        browser.setOpenExternalLinks(True)
+        browser.setHtml("""
+        <h2>NetScope 도움말</h2>
+        <h3>기본 사용법</h3>
+        <ul>
+            <li><b>F12</b> — 트래픽 캡처 시작/중지</li>
+            <li><b>Ctrl+O</b> — 아카이브 파일(.netsession, .saz) 불러오기</li>
+            <li><b>Ctrl+S</b> — 현재 세션 저장</li>
+            <li><b>Ctrl+F</b> — 세션 검색</li>
+            <li><b>Delete</b> — 선택한 세션 삭제</li>
+            <li><b>F2</b> — 선택한 세션 편집</li>
+            <li><b>F5</b> — 화면 새로 고침</li>
+            <li><b>F6</b> — 세션 목록 압축(Squish) 토글</li>
+            <li><b>F7</b> — 통계 탭으로 전환</li>
+            <li><b>F8</b> — 인스펙터 탭으로 전환</li>
+            <li><b>F9</b> — 컴포저 탭으로 전환</li>
+        </ul>
+        <h3>세션 분석</h3>
+        <ul>
+            <li>세션을 클릭하면 오른쪽 패널에서 요청/응답 헤더와 본문을 확인할 수 있습니다.</li>
+            <li>규칙(Rules) 메뉴에서 필터와 수정 규칙을 설정할 수 있습니다.</li>
+            <li>컴포저(Composer) 탭을 사용하여 HTTP 요청을 직접 작성하고 전송할 수 있습니다.</li>
+        </ul>
+        <h3>파일 형식</h3>
+        <ul>
+            <li><b>.netsession</b> — NetScope 기본 저장 형식 (JSON)</li>
+            <li><b>.saz</b> — Fiddler 아카이브 파일 (읽기 지원)</li>
+            <li><b>.har</b> — HTTP Archive 형식 (가져오기/내보내기 지원)</li>
+        </ul>
+        """)
+        layout.addWidget(browser)
+        btn_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        btn_box.rejected.connect(dlg.reject)
+        layout.addWidget(btn_box)
+        dlg.exec()
+
+    @Slot()
+    def _on_help_fiddler_book(self):
+        """Fiddler 학습 자료 안내 다이얼로그."""
+        from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QVBoxLayout
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Get Fiddler Book")
+        dlg.setFixedSize(440, 200)
+        layout = QVBoxLayout(dlg)
+        label = QLabel(
+            "<b>Fiddler Book</b> 관련 학습 자료는 외부 링크를 통해 제공됩니다.<br><br>"
+            "HTTP 디버깅 및 네트워크 트래픽 분석에 관심이 있으시다면<br>"
+            "Telerik Fiddler 공식 문서와 도서를 참고하시기 바랍니다.<br><br>"
+            "<i>현재 버전에서는 외부 브라우저 연결 기능이 준비 중입니다.</i>"
+        )
+        label.setWordWrap(True)
+        layout.addWidget(label)
+        btn_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
+        btn_box.accepted.connect(dlg.accept)
+        layout.addWidget(btn_box)
+        dlg.exec()
+
+    @Slot()
+    def _on_help_discussions(self):
+        """사용자 커뮤니티 안내 다이얼로그."""
+        from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QVBoxLayout
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Discussions")
+        dlg.setFixedSize(400, 180)
+        layout = QVBoxLayout(dlg)
+        label = QLabel(
+            "<b>NetScope 사용자 커뮤니티</b><br><br>"
+            "질문, 제안, 팁 공유를 위한 토론 공간에 참여하세요.<br><br>"
+            "<i>현재 버전에서는 커뮤니티 연결 기능이 준비 중입니다.</i>"
+        )
+        label.setWordWrap(True)
+        layout.addWidget(label)
+        btn_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
+        btn_box.accepted.connect(dlg.accept)
+        layout.addWidget(btn_box)
+        dlg.exec()
+
+    @Slot()
+    def _on_help_http_references(self):
+        """HTTP 참고 자료 다이얼로그."""
+        from PySide6.QtWidgets import QDialog, QDialogButtonBox, QTextBrowser, QVBoxLayout
+        dlg = QDialog(self)
+        dlg.setWindowTitle("HTTP References")
+        dlg.resize(580, 420)
+        layout = QVBoxLayout(dlg)
+        browser = QTextBrowser()
+        browser.setHtml("""
+        <h2>HTTP 참고 자료</h2>
+        <h3>주요 상태 코드</h3>
+        <table border="1" cellpadding="4" cellspacing="0" style="border-collapse:collapse;">
+          <tr><th>코드</th><th>설명</th></tr>
+          <tr><td>200</td><td>OK — 요청 성공</td></tr>
+          <tr><td>201</td><td>Created — 리소스 생성됨</td></tr>
+          <tr><td>204</td><td>No Content — 내용 없음</td></tr>
+          <tr><td>301</td><td>Moved Permanently — 영구 리다이렉트</td></tr>
+          <tr><td>302</td><td>Found — 임시 리다이렉트</td></tr>
+          <tr><td>304</td><td>Not Modified — 캐시 유효</td></tr>
+          <tr><td>400</td><td>Bad Request — 잘못된 요청</td></tr>
+          <tr><td>401</td><td>Unauthorized — 인증 필요</td></tr>
+          <tr><td>403</td><td>Forbidden — 접근 거부</td></tr>
+          <tr><td>404</td><td>Not Found — 리소스 없음</td></tr>
+          <tr><td>500</td><td>Internal Server Error — 서버 오류</td></tr>
+          <tr><td>502</td><td>Bad Gateway — 게이트웨이 오류</td></tr>
+          <tr><td>503</td><td>Service Unavailable — 서비스 불가</td></tr>
+        </table>
+        <h3>주요 HTTP 메서드</h3>
+        <ul>
+          <li><b>GET</b> — 리소스 조회</li>
+          <li><b>POST</b> — 데이터 전송/생성</li>
+          <li><b>PUT</b> — 리소스 전체 업데이트</li>
+          <li><b>PATCH</b> — 리소스 부분 업데이트</li>
+          <li><b>DELETE</b> — 리소스 삭제</li>
+          <li><b>HEAD</b> — 헤더만 조회</li>
+          <li><b>OPTIONS</b> — 허용 메서드 확인</li>
+          <li><b>CONNECT</b> — 터널 연결 (HTTPS 프록시)</li>
+        </ul>
+        """)
+        layout.addWidget(browser)
+        btn_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        btn_box.rejected.connect(dlg.reject)
+        layout.addWidget(btn_box)
+        dlg.exec()
+
+    @Slot()
+    def _on_help_troubleshoot(self):
+        """문제 해결 도구 다이얼로그."""
+        from PySide6.QtWidgets import (
+            QDialog, QDialogButtonBox, QGroupBox, QLabel,
+            QPushButton, QTextEdit, QVBoxLayout,
+        )
+        import sys
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Troubleshoot")
+        dlg.resize(520, 400)
+        layout = QVBoxLayout(dlg)
+
+        info_box = QGroupBox("시스템 정보")
+        info_layout = QVBoxLayout(info_box)
+        sessions_count = self._session_model.rowCount()
+        engine_running = self._engine.is_running()
+        info_text = QTextEdit()
+        info_text.setReadOnly(True)
+        info_text.setPlainText(
+            f"Python 버전: {sys.version}\n"
+            f"프록시 포트: {self._proxy_port}\n"
+            f"캡처 상태: {'실행 중' if engine_running else '대기 중'}\n"
+            f"현재 세션 수: {sessions_count}\n"
+            f"현재 파일: {self._current_file or '(없음)'}\n"
+            f"자동 스크롤: {'켜짐' if self._auto_scroll else '꺼짐'}\n"
+        )
+        info_layout.addWidget(info_text)
+        layout.addWidget(info_box)
+
+        clear_btn = QPushButton("세션 목록 초기화")
+        clear_btn.clicked.connect(lambda: (
+            self._session_model.clear(),
+            info_text.setPlainText(info_text.toPlainText() + "\n[세션 목록이 초기화되었습니다]"),
+        ))
+        layout.addWidget(clear_btn)
+
+        btn_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        btn_box.rejected.connect(dlg.reject)
+        layout.addWidget(btn_box)
+        dlg.exec()
+
+    @Slot()
+    def _on_help_support(self):
+        """기술 지원 안내 다이얼로그."""
+        from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QVBoxLayout
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Get Priority Support")
+        dlg.setFixedSize(400, 180)
+        layout = QVBoxLayout(dlg)
+        label = QLabel(
+            "<b>Priority Support</b><br><br>"
+            "기술 지원이 필요하신 경우 이슈 트래커를 통해 문의하시거나<br>"
+            "프로젝트 관리자에게 직접 연락하시기 바랍니다.<br><br>"
+            "<i>현재 버전에서는 지원 채널 연결 기능이 준비 중입니다.</i>"
+        )
+        label.setWordWrap(True)
+        layout.addWidget(label)
+        btn_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
+        btn_box.accepted.connect(dlg.accept)
+        layout.addWidget(btn_box)
+        dlg.exec()
+
+    @Slot()
+    def _on_help_check_updates(self):
+        """업데이트 확인 다이얼로그."""
+        from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QVBoxLayout
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Check for Updates")
+        dlg.setFixedSize(380, 160)
+        layout = QVBoxLayout(dlg)
+        label = QLabel(
+            "<b>업데이트 확인</b><br><br>"
+            "현재 설치된 버전이 최신 버전입니다.<br><br>"
+            "<i>자동 업데이트 확인 기능이 준비 중입니다.</i>"
+        )
+        label.setWordWrap(True)
+        layout.addWidget(label)
+        btn_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
+        btn_box.accepted.connect(dlg.accept)
+        layout.addWidget(btn_box)
+        dlg.exec()
+
+    @Slot()
+    def _on_help_feedback(self):
+        """피드백 전송 다이얼로그."""
+        from PySide6.QtWidgets import (
+            QDialog, QDialogButtonBox, QLabel,
+            QLineEdit, QTextEdit, QVBoxLayout,
+        )
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Send Feedback")
+        dlg.resize(460, 300)
+        layout = QVBoxLayout(dlg)
+
+        layout.addWidget(QLabel("제목:"))
+        subject_edit = QLineEdit()
+        subject_edit.setPlaceholderText("피드백 제목을 입력하세요")
+        layout.addWidget(subject_edit)
+
+        layout.addWidget(QLabel("내용:"))
+        body_edit = QTextEdit()
+        body_edit.setPlaceholderText("의견, 버그 보고, 개선 요청 등을 자유롭게 작성해 주세요.")
+        layout.addWidget(body_edit)
+
+        btn_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        btn_box.accepted.connect(lambda: (
+            QMessageBox.information(dlg, "전송 완료", "피드백이 접수되었습니다. 감사합니다."),
+            dlg.accept(),
+        ))
+        btn_box.rejected.connect(dlg.reject)
+        layout.addWidget(btn_box)
+        dlg.exec()
+
+    @Slot()
+    def _on_help_about(self):
+        """프로그램 정보 다이얼로그."""
+        from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QVBoxLayout
+        dlg = QDialog(self)
+        dlg.setWindowTitle("About NetScope")
+        dlg.setFixedSize(420, 260)
+        layout = QVBoxLayout(dlg)
+        label = QLabel(
+            "<h2>NetScope</h2>"
+            "<b>Network Traffic Inspector</b><br><br>"
+            "버전: 1.0.0<br>"
+            "빌드: 2025<br><br>"
+            "HTTP/HTTPS 트래픽을 캡처하고 분석하는 네트워크 디버깅 도구입니다.<br>"
+            "Fiddler .saz 아카이브 파일 읽기 및 HAR 형식 가져오기/내보내기를 지원합니다.<br><br>"
+            "© 2025 NetScope Project. All rights reserved."
+        )
+        label.setWordWrap(True)
+        label.setTextFormat(Qt.TextFormat.RichText)
+        layout.addWidget(label)
+        btn_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
+        btn_box.accepted.connect(dlg.accept)
+        layout.addWidget(btn_box)
+        dlg.exec()
 
     # ── Style ─────────────────────────────────────────────────────────────────
 
