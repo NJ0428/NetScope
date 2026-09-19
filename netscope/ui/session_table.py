@@ -110,6 +110,7 @@ class SessionTableView(QTableView):
             }
         """)
 
+        self._squished = False
         self.selectionModel().currentRowChanged.connect(self._on_row_changed)
 
     def set_rules(self, rules):
@@ -122,6 +123,11 @@ class SessionTableView(QTableView):
         if current.isValid():
             source_index = self._proxy.mapToSource(current)
             self.session_selected.emit(source_index.row())
+
+    def set_squished(self, squished: bool):
+        self._squished = squished
+        vh = self.verticalHeader()
+        vh.setDefaultSectionSize(18 if squished else 26)
 
     def scroll_to_bottom(self):
         self.scrollToBottom()
