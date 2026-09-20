@@ -32,6 +32,10 @@ class ProxyEngine(QObject):
     def is_running(self) -> bool:
         raise NotImplementedError
 
+    def get_pending_session(self, session_id: int) -> "SessionEntry | None":
+        """Return a session waiting at a breakpoint, or None."""
+        return None
+
     def resume_breakpoint(self, session_id: int,
                           modified_headers: dict | None = None,
                           modified_body: bytes | None = None):
