@@ -449,51 +449,51 @@ class MainWindow(QMainWindow):
         # 도움말
         help_menu = mb.addMenu("도움말")
 
-        act_welcome_screen = QAction("Welcome Screen", self)
+        act_welcome_screen = QAction("시작 화면으로 이동", self)
         act_welcome_screen.triggered.connect(self._on_help_welcome_screen)
         help_menu.addAction(act_welcome_screen)
 
         help_menu.addSeparator()
 
-        act_help = QAction("Help", self, shortcut=QKeySequence(Qt.Key.Key_F1))
+        act_help = QAction("도움말 (F1)", self, shortcut=QKeySequence(Qt.Key.Key_F1))
         act_help.triggered.connect(self._on_help_docs)
         help_menu.addAction(act_help)
 
-        act_fiddler_book = QAction("Get Fiddler Book", self)
+        act_fiddler_book = QAction("Fiddler 학습 자료", self)
         act_fiddler_book.triggered.connect(self._on_help_fiddler_book)
         help_menu.addAction(act_fiddler_book)
 
-        act_discussions = QAction("Discussions", self)
+        act_discussions = QAction("사용자 커뮤니티", self)
         act_discussions.triggered.connect(self._on_help_discussions)
         help_menu.addAction(act_discussions)
 
-        act_http_ref = QAction("HTTP References", self)
+        act_http_ref = QAction("HTTP 참고 자료", self)
         act_http_ref.triggered.connect(self._on_help_http_references)
         help_menu.addAction(act_http_ref)
 
         help_menu.addSeparator()
 
-        act_troubleshoot = QAction("Troubleshoot", self)
+        act_troubleshoot = QAction("문제 해결", self)
         act_troubleshoot.triggered.connect(self._on_help_troubleshoot)
         help_menu.addAction(act_troubleshoot)
 
-        act_support = QAction("Get Priority Support", self)
+        act_support = QAction("기술 지원 받기", self)
         act_support.triggered.connect(self._on_help_support)
         help_menu.addAction(act_support)
 
         help_menu.addSeparator()
 
-        act_check_updates = QAction("Check for Updates", self)
+        act_check_updates = QAction("업데이트 확인", self)
         act_check_updates.triggered.connect(self._on_help_check_updates)
         help_menu.addAction(act_check_updates)
 
-        act_feedback = QAction("Send Feedback", self)
+        act_feedback = QAction("의견 보내기", self)
         act_feedback.triggered.connect(self._on_help_feedback)
         help_menu.addAction(act_feedback)
 
         help_menu.addSeparator()
 
-        act_about = QAction("About", self)
+        act_about = QAction("NetScope 정보", self)
         act_about.triggered.connect(self._on_help_about)
         help_menu.addAction(act_about)
 
@@ -1426,11 +1426,11 @@ class MainWindow(QMainWindow):
         """Fiddler 학습 자료 안내 다이얼로그."""
         from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QVBoxLayout
         dlg = QDialog(self)
-        dlg.setWindowTitle("Get Fiddler Book")
+        dlg.setWindowTitle("Fiddler 학습 자료")
         dlg.setFixedSize(440, 200)
         layout = QVBoxLayout(dlg)
         label = QLabel(
-            "<b>Fiddler Book</b> 관련 학습 자료는 외부 링크를 통해 제공됩니다.<br><br>"
+            "<b>Fiddler 학습 자료</b>는 외부 링크를 통해 제공됩니다.<br><br>"
             "HTTP 디버깅 및 네트워크 트래픽 분석에 관심이 있으시다면<br>"
             "Telerik Fiddler 공식 문서와 도서를 참고하시기 바랍니다.<br><br>"
             "<i>현재 버전에서는 외부 브라우저 연결 기능이 준비 중입니다.</i>"
@@ -1447,7 +1447,7 @@ class MainWindow(QMainWindow):
         """사용자 커뮤니티 안내 다이얼로그."""
         from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QVBoxLayout
         dlg = QDialog(self)
-        dlg.setWindowTitle("Discussions")
+        dlg.setWindowTitle("사용자 커뮤니티")
         dlg.setFixedSize(400, 180)
         layout = QVBoxLayout(dlg)
         label = QLabel(
@@ -1467,7 +1467,7 @@ class MainWindow(QMainWindow):
         """HTTP 참고 자료 다이얼로그."""
         from PySide6.QtWidgets import QDialog, QDialogButtonBox, QTextBrowser, QVBoxLayout
         dlg = QDialog(self)
-        dlg.setWindowTitle("HTTP References")
+        dlg.setWindowTitle("HTTP 참고 자료")
         dlg.resize(580, 420)
         layout = QVBoxLayout(dlg)
         browser = QTextBrowser()
@@ -1517,7 +1517,7 @@ class MainWindow(QMainWindow):
         )
         import sys
         dlg = QDialog(self)
-        dlg.setWindowTitle("Troubleshoot")
+        dlg.setWindowTitle("문제 해결")
         dlg.resize(520, 400)
         layout = QVBoxLayout(dlg)
 
@@ -1555,11 +1555,11 @@ class MainWindow(QMainWindow):
         """기술 지원 안내 다이얼로그."""
         from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QVBoxLayout
         dlg = QDialog(self)
-        dlg.setWindowTitle("Get Priority Support")
+        dlg.setWindowTitle("기술 지원 받기")
         dlg.setFixedSize(400, 180)
         layout = QVBoxLayout(dlg)
         label = QLabel(
-            "<b>Priority Support</b><br><br>"
+            "<b>기술 지원</b><br><br>"
             "기술 지원이 필요하신 경우 이슈 트래커를 통해 문의하시거나<br>"
             "프로젝트 관리자에게 직접 연락하시기 바랍니다.<br><br>"
             "<i>현재 버전에서는 지원 채널 연결 기능이 준비 중입니다.</i>"
@@ -1576,7 +1576,7 @@ class MainWindow(QMainWindow):
         """업데이트 확인 다이얼로그."""
         from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QVBoxLayout
         dlg = QDialog(self)
-        dlg.setWindowTitle("Check for Updates")
+        dlg.setWindowTitle("업데이트 확인")
         dlg.setFixedSize(380, 160)
         layout = QVBoxLayout(dlg)
         label = QLabel(
@@ -1599,7 +1599,7 @@ class MainWindow(QMainWindow):
             QLineEdit, QTextEdit, QVBoxLayout,
         )
         dlg = QDialog(self)
-        dlg.setWindowTitle("Send Feedback")
+        dlg.setWindowTitle("의견 보내기")
         dlg.resize(460, 300)
         layout = QVBoxLayout(dlg)
 
@@ -1629,17 +1629,17 @@ class MainWindow(QMainWindow):
         """프로그램 정보 다이얼로그."""
         from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QVBoxLayout
         dlg = QDialog(self)
-        dlg.setWindowTitle("About NetScope")
+        dlg.setWindowTitle("NetScope 정보")
         dlg.setFixedSize(420, 260)
         layout = QVBoxLayout(dlg)
         label = QLabel(
             "<h2>NetScope</h2>"
-            "<b>Network Traffic Inspector</b><br><br>"
+            "<b>네트워크 트래픽 인스펙터</b><br><br>"
             "버전: 1.0.0<br>"
             "빌드: 2025<br><br>"
             "HTTP/HTTPS 트래픽을 캡처하고 분석하는 네트워크 디버깅 도구입니다.<br>"
             "Fiddler .saz 아카이브 파일 읽기 및 HAR 형식 가져오기/내보내기를 지원합니다.<br><br>"
-            "© 2025 NetScope Project. All rights reserved."
+            "© 2025 NetScope 프로젝트. 모든 권리 보유."
         )
         label.setWordWrap(True)
         label.setTextFormat(Qt.TextFormat.RichText)
