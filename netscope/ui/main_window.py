@@ -18,6 +18,7 @@ except ImportError:
 from netscope.models.session import SessionEntry, SessionState
 from netscope.models.session_table_model import SessionTableModel
 from netscope.proxy.engine import ProxyEngine, StubProxyEngine
+from netscope.proxy.mitm_engine import MitmproxyEngine
 from netscope.rules.rules_engine import RulesEngine
 from netscope.ui.composer_panel import ComposerPanel
 from netscope.ui.detail_panel import DetailPanel
@@ -25,12 +26,14 @@ from netscope.ui.statistics_panel import StatisticsPanel
 from netscope.ui.dialogs.breakpoint_dialog import BreakpointDialog
 from netscope.ui.dialogs.customize_rules_dialog import CustomizeRulesDialog
 from netscope.ui.dialogs.performance_dialog import PerformanceDialog
+from netscope.ui.dialogs.proxy_settings_dialog import ProxySettingsDialog
 from netscope.ui.dialogs.rules_manager_dialog import RulesManagerDialog
 from netscope.ui.dialogs.user_agent_dialog import UserAgentDialog
 from netscope.ui.session_table import SessionTableView
 from netscope.ui.toolbar import Toolbar
 from netscope.ui.welcome_panel import WelcomePanel
 from netscope.utils.saz_reader import load_saz
+from netscope.utils.system_proxy import clear_system_proxy, set_system_proxy
 
 _RECENT_MAX = 10
 _CONFIG_PATH = Path.home() / ".netscope" / "config.json"
@@ -47,9 +50,11 @@ class MainWindow(QMainWindow):
         self.resize(1400, 860)
 
         self._proxy_port = 8888
+        self._auto_set_proxy = True   # system proxy 자동 등록 여부
+        self._use_real_engine = MitmproxyEngine.AVAILABLE
         self._rules = RulesEngine(self)
         self._session_model = SessionTableModel(self)
-        self._engine: ProxyEngine = StubProxyEngine(self)
+        self._engine: ProxyEngine = self._create_engine()
         self._engine.set_rules(self._rules)
         self._current_file: str | None = None
         self._modified = False
@@ -343,8 +348,15 @@ class MainWindow(QMainWindow):
         tools_menu = mb.addMenu("도구")
         tools_menu.addAction(QAction("옵션...", self))
         tools_menu.addSeparator()
-        tools_menu.addAction(QAction("인증서 관리자", self))
-        tools_menu.addAction(QAction("프록시 설정...", self))
+
+        act_cert = QAction("인증서 관리자", self)
+        act_cert.triggered.connect(self._on_cert_manager)
+        tools_menu.addAction(act_cert)
+
+        act_proxy_settings = QAction("프록시 설정...", self)
+        act_proxy_settings.triggered.connect(self._on_proxy_settings)
+        tools_menu.addAction(act_proxy_settings)
+
         tools_menu.addSeparator()
         tools_menu.addAction(QAction("WinConfig", self))
 
@@ -613,6 +625,69 @@ class MainWindow(QMainWindow):
     def _on_performance(self):
         PerformanceDialog(self._rules, self).exec()
 
+    @Slot()
+    def _on_proxy_settings(self):
+        dlg = ProxySettingsDialog(
+            port=self._proxy_port,
+            auto_proxy=self._auto_set_proxy,
+            use_real_engine=self._use_real_engine,
+            mitm_available=MitmproxyEngine.AVAILABLE,
+            parent=self,
+        )
+        if dlg.exec() != ProxySettingsDialog.DialogCode.Accepted:
+            return
+
+        new_port = dlg.get_port()
+        new_auto = dlg.get_auto_proxy()
+        new_real = dlg.get_use_real_engine()
+
+        engine_changed = new_real != self._use_real_engine
+        was_running = self._engine.is_running()
+
+        if was_running:
+            self._stop_capture()
+
+        self._proxy_port = new_port
+        self._auto_set_proxy = new_auto
+        self._use_real_engine = new_real
+        self._port_label.setText(f"포트  {self._proxy_port}")
+
+        if engine_changed:
+            self._engine.deleteLater()
+            self._engine = self._create_engine()
+            self._engine.set_rules(self._rules)
+            self._engine.session_started.connect(
+                self._on_session_started, Qt.ConnectionType.QueuedConnection)
+            self._engine.session_completed.connect(
+                self._on_session_completed, Qt.ConnectionType.QueuedConnection)
+            self._engine.status_changed.connect(
+                self._on_status_changed, Qt.ConnectionType.QueuedConnection)
+            self._engine.breakpoint_request.connect(
+                self._on_breakpoint, Qt.ConnectionType.QueuedConnection)
+            kind = "실제 mitmproxy" if new_real else "스텁(테스트)"
+            QMessageBox.information(
+                self, "엔진 변경",
+                f"프록시 엔진이 [{kind}]으로 변경되었습니다.",
+            )
+
+        if was_running:
+            self._start_capture()
+
+    @Slot()
+    def _on_cert_manager(self):
+        import sys
+        from netscope.utils.system_proxy import install_ca_cert_windows, get_ca_cert_path
+        if sys.platform != "win32":
+            QMessageBox.information(
+                self, "인증서 관리자",
+                "Windows에서만 자동 설치를 지원합니다.\n"
+                "CA 인증서 위치: ~/.mitmproxy/mitmproxy-ca-cert.pem",
+            )
+            return
+        ok, msg = install_ca_cert_windows()
+        icon = QMessageBox.Icon.Information if ok else QMessageBox.Icon.Warning
+        QMessageBox(icon, "인증서 관리자", msg, parent=self).exec()
+
     def _sync_menu_checks(self):
         """Sync checkable menu items with current rules state (after dialog edits)."""
         self._act_hide_images.setChecked(self._rules.hide_image_requests)
@@ -747,15 +822,34 @@ class MainWindow(QMainWindow):
         _save_recent_config(self._recent_files)
         self._rebuild_recent_menu()
 
+    def _create_engine(self) -> ProxyEngine:
+        """Create the appropriate proxy engine based on current settings."""
+        if self._use_real_engine and MitmproxyEngine.AVAILABLE:
+            engine = MitmproxyEngine(self)
+        else:
+            engine = StubProxyEngine(self)
+        return engine
+
     def _start_capture(self):
         self._toolbar.set_capturing(True)
         self._act_capture.setChecked(True)
         self._cap_label.setText(_STATUS_CAPTURE)
         self._cap_label.setStyleSheet("color: #27ae60; font-weight: bold;")
+        if self._auto_set_proxy and self._use_real_engine:
+            ok = set_system_proxy("127.0.0.1", self._proxy_port)
+            if not ok:
+                QMessageBox.warning(
+                    self, "시스템 프록시",
+                    "시스템 프록시 자동 등록에 실패했습니다.\n"
+                    "브라우저에서 수동으로 127.0.0.1:"
+                    f"{self._proxy_port}로 설정해 주세요.",
+                )
         self._engine.start(self._proxy_port)
 
     def _stop_capture(self):
         self._engine.stop()
+        if self._auto_set_proxy and self._use_real_engine:
+            clear_system_proxy()
         self._toolbar.set_capturing(False)
         self._act_capture.setChecked(False)
         self._cap_label.setText(_STATUS_IDLE)
