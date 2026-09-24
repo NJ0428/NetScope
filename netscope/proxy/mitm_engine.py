@@ -159,10 +159,29 @@ class MitmproxyEngine(ProxyEngine):
         # session_id -> SessionEntry  (breakpoint waiting for resume)
         self._pending: dict[int, SessionEntry] = {}
 
+        # upstream proxy
+        self._upstream_host: str = ""
+        self._upstream_port: int = 8080
+        self._upstream_user: str = ""
+        self._upstream_password: str = ""
+
     # ── ProxyEngine interface ──────────────────────────────────────────────
 
     def set_rules(self, rules: RulesEngine):
         self._rules = rules
+
+    def set_upstream_proxy(
+        self,
+        host: str,
+        port: int,
+        user: str = "",
+        password: str = "",
+    ) -> None:
+        """Configure an upstream proxy. Call before start()."""
+        self._upstream_host = host
+        self._upstream_port = port
+        self._upstream_user = user
+        self._upstream_password = password
 
     def get_pending_session(self, session_id: int) -> SessionEntry | None:
         return self._pending.get(session_id)
@@ -225,11 +244,22 @@ class MitmproxyEngine(ProxyEngine):
             self._running = False
 
     async def _async_run(self, port: int):
-        opts = options.Options(
+        opts_kwargs: dict = dict(
             listen_host="127.0.0.1",
             listen_port=port,
             ssl_insecure=True,
         )
+        if self._upstream_host:
+            creds = ""
+            if self._upstream_user:
+                import urllib.parse
+                user = urllib.parse.quote(self._upstream_user, safe="")
+                pw   = urllib.parse.quote(self._upstream_password, safe="")
+                creds = f"{user}:{pw}@"
+            opts_kwargs["mode"] = [
+                f"upstream:http://{creds}{self._upstream_host}:{self._upstream_port}"
+            ]
+        opts = options.Options(**opts_kwargs)
         self._master = DumpMaster(opts, with_termlog=False, with_dumper=False)
         self._master.addons.add(_NetScopeAddon(self))
         try:
