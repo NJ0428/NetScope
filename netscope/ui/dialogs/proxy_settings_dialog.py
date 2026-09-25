@@ -1,4 +1,4 @@
-"""Proxy settings dialog — port, engine type, system-proxy toggle."""
+"""Proxy settings dialog — port, engine type, upstream proxy, system-proxy toggle."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import sys
 
 from PySide6.QtWidgets import (
     QCheckBox, QDialog, QDialogButtonBox, QFormLayout,
-    QGroupBox, QHBoxLayout, QLabel, QMessageBox, QPushButton,
+    QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton,
     QSpinBox, QVBoxLayout,
 )
 
@@ -19,19 +19,38 @@ class ProxySettingsDialog(QDialog):
       - Listening port
       - Whether to auto-register system proxy on capture
       - Engine type (Real / Stub)
+      - Upstream proxy (host, port, auth)
       - CA certificate installation
     """
 
-    def __init__(self, port: int, auto_proxy: bool, use_real_engine: bool,
-                 mitm_available: bool, parent=None):
+    def __init__(
+        self,
+        port: int,
+        auto_proxy: bool,
+        use_real_engine: bool,
+        mitm_available: bool,
+        upstream_enabled: bool = False,
+        upstream_host: str = "",
+        upstream_port: int = 8080,
+        upstream_auth_enabled: bool = False,
+        upstream_user: str = "",
+        upstream_password: str = "",
+        parent=None,
+    ):
         super().__init__(parent)
         self.setWindowTitle("프록시 설정")
-        self.setMinimumWidth(440)
+        self.setMinimumWidth(460)
 
         self._port = port
         self._auto_proxy = auto_proxy
         self._use_real = use_real_engine
         self._mitm_available = mitm_available
+        self._upstream_enabled = upstream_enabled
+        self._upstream_host = upstream_host
+        self._upstream_port = upstream_port
+        self._upstream_auth_enabled = upstream_auth_enabled
+        self._upstream_user = upstream_user
+        self._upstream_password = upstream_password
 
         self._setup_ui()
 
@@ -45,6 +64,24 @@ class ProxySettingsDialog(QDialog):
 
     def get_use_real_engine(self) -> bool:
         return self._real_chk.isChecked()
+
+    def get_upstream_enabled(self) -> bool:
+        return self._upstream_chk.isChecked()
+
+    def get_upstream_host(self) -> str:
+        return self._upstream_host_edit.text().strip()
+
+    def get_upstream_port(self) -> int:
+        return self._upstream_port_spin.value()
+
+    def get_upstream_auth_enabled(self) -> bool:
+        return self._upstream_auth_chk.isChecked()
+
+    def get_upstream_user(self) -> str:
+        return self._upstream_user_edit.text().strip()
+
+    def get_upstream_password(self) -> str:
+        return self._upstream_pass_edit.text()
 
     # ── UI ─────────────────────────────────────────────────────────────────
 
@@ -89,6 +126,44 @@ class ProxySettingsDialog(QDialog):
 
         layout.addWidget(engine_group)
 
+        # ── 업스트림 프록시 ────────────────────────────────────────────────
+        upstream_group = QGroupBox("업스트림 프록시")
+        uform = QFormLayout(upstream_group)
+
+        self._upstream_chk = QCheckBox("업스트림 프록시 사용")
+        self._upstream_chk.setChecked(self._upstream_enabled)
+        self._upstream_chk.toggled.connect(self._on_upstream_toggled)
+        uform.addRow("", self._upstream_chk)
+
+        self._upstream_host_edit = QLineEdit()
+        self._upstream_host_edit.setPlaceholderText("예: 192.168.1.1")
+        self._upstream_host_edit.setText(self._upstream_host)
+        uform.addRow("호스트:", self._upstream_host_edit)
+
+        self._upstream_port_spin = QSpinBox()
+        self._upstream_port_spin.setRange(1, 65535)
+        self._upstream_port_spin.setValue(self._upstream_port)
+        uform.addRow("포트:", self._upstream_port_spin)
+
+        self._upstream_auth_chk = QCheckBox("프록시 인증 사용")
+        self._upstream_auth_chk.setChecked(self._upstream_auth_enabled)
+        self._upstream_auth_chk.toggled.connect(self._on_auth_toggled)
+        uform.addRow("", self._upstream_auth_chk)
+
+        self._upstream_user_edit = QLineEdit()
+        self._upstream_user_edit.setPlaceholderText("사용자명")
+        self._upstream_user_edit.setText(self._upstream_user)
+        uform.addRow("사용자명:", self._upstream_user_edit)
+
+        self._upstream_pass_edit = QLineEdit()
+        self._upstream_pass_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self._upstream_pass_edit.setPlaceholderText("비밀번호")
+        self._upstream_pass_edit.setText(self._upstream_password)
+        uform.addRow("비밀번호:", self._upstream_pass_edit)
+
+        layout.addWidget(upstream_group)
+        self._on_upstream_toggled(self._upstream_enabled)
+
         # ── HTTPS 인터셉트 ─────────────────────────────────────────────────
         cert_group = QGroupBox("HTTPS 인터셉트 (CA 인증서)")
         clayout = QVBoxLayout(cert_group)
@@ -111,7 +186,6 @@ class ProxySettingsDialog(QDialog):
             clayout.addLayout(btn_row)
 
         layout.addWidget(cert_group)
-
         layout.addStretch()
 
         # ── 버튼 ───────────────────────────────────────────────────────────
@@ -122,9 +196,20 @@ class ProxySettingsDialog(QDialog):
         btns.rejected.connect(self.reject)
         layout.addWidget(btns)
 
+    # ── Slots ──────────────────────────────────────────────────────────────
+
+    def _on_upstream_toggled(self, enabled: bool):
+        self._upstream_host_edit.setEnabled(enabled)
+        self._upstream_port_spin.setEnabled(enabled)
+        self._upstream_auth_chk.setEnabled(enabled)
+        self._on_auth_toggled(self._upstream_auth_chk.isChecked() if enabled else False)
+
+    def _on_auth_toggled(self, enabled: bool):
+        upstream_on = self._upstream_chk.isChecked()
+        self._upstream_user_edit.setEnabled(enabled and upstream_on)
+        self._upstream_pass_edit.setEnabled(enabled and upstream_on)
+
     def _install_cert(self):
         ok, msg = install_ca_cert_windows()
-        icon = (
-            QMessageBox.Icon.Information if ok else QMessageBox.Icon.Warning
-        )
+        icon = QMessageBox.Icon.Information if ok else QMessageBox.Icon.Warning
         QMessageBox(icon, "인증서 설치", msg, parent=self).exec()

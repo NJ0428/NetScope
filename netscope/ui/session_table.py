@@ -1,5 +1,6 @@
 from PySide6.QtCore import Qt, Signal, QSortFilterProxyModel
-from PySide6.QtWidgets import QHeaderView, QTableView
+from PySide6.QtGui import QAction
+from PySide6.QtWidgets import QHeaderView, QMenu, QTableView
 
 from netscope.models.session import SessionEntry
 from netscope.models.session_table_model import SessionTableModel
@@ -56,6 +57,7 @@ class SessionFilterProxy(QSortFilterProxyModel):
 
 class SessionTableView(QTableView):
     session_selected = Signal(int)  # row in source model
+    replay_requested = Signal(object)  # SessionEntry
 
     def __init__(self, model: SessionTableModel, parent=None):
         super().__init__(parent)
@@ -111,6 +113,8 @@ class SessionTableView(QTableView):
         """)
 
         self._squished = False
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._on_context_menu)
         self.selectionModel().currentRowChanged.connect(self._on_row_changed)
 
     def set_rules(self, rules):
@@ -143,6 +147,16 @@ class SessionTableView(QTableView):
             if s is not None:
                 sessions.append(s)
         return sessions
+
+    def _on_context_menu(self, pos):
+        sessions = self.get_selected_sessions()
+        if not sessions:
+            return
+        menu = QMenu(self)
+        act_replay = QAction("컴포저에서 열기 (Replay)", self)
+        act_replay.triggered.connect(lambda: self.replay_requested.emit(sessions[0]))
+        menu.addAction(act_replay)
+        menu.exec(self.viewport().mapToGlobal(pos))
 
     def select_session_by_id(self, session_id: int):
         for row in range(self._source_model.rowCount()):

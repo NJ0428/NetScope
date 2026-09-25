@@ -52,6 +52,12 @@ class MainWindow(QMainWindow):
         self._proxy_port = 8888
         self._auto_set_proxy = True   # system proxy 자동 등록 여부
         self._use_real_engine = MitmproxyEngine.AVAILABLE
+        self._upstream_enabled = False
+        self._upstream_host = ""
+        self._upstream_port = 8080
+        self._upstream_auth_enabled = False
+        self._upstream_user = ""
+        self._upstream_password = ""
         self._rules = RulesEngine(self)
         self._session_model = SessionTableModel(self)
         self._engine: ProxyEngine = self._create_engine()
@@ -588,6 +594,7 @@ class MainWindow(QMainWindow):
         self._toolbar.process_changed.connect(self._on_process_changed)
 
         self._table_view.session_selected.connect(self._on_session_selected)
+        self._table_view.replay_requested.connect(self._on_replay_in_composer)
         self._table_view.set_rules(self._rules)
 
         self._engine.session_started.connect(
@@ -632,6 +639,12 @@ class MainWindow(QMainWindow):
             auto_proxy=self._auto_set_proxy,
             use_real_engine=self._use_real_engine,
             mitm_available=MitmproxyEngine.AVAILABLE,
+            upstream_enabled=self._upstream_enabled,
+            upstream_host=self._upstream_host,
+            upstream_port=self._upstream_port,
+            upstream_auth_enabled=self._upstream_auth_enabled,
+            upstream_user=self._upstream_user,
+            upstream_password=self._upstream_password,
             parent=self,
         )
         if dlg.exec() != ProxySettingsDialog.DialogCode.Accepted:
@@ -650,6 +663,12 @@ class MainWindow(QMainWindow):
         self._proxy_port = new_port
         self._auto_set_proxy = new_auto
         self._use_real_engine = new_real
+        self._upstream_enabled = dlg.get_upstream_enabled()
+        self._upstream_host = dlg.get_upstream_host()
+        self._upstream_port = dlg.get_upstream_port()
+        self._upstream_auth_enabled = dlg.get_upstream_auth_enabled()
+        self._upstream_user = dlg.get_upstream_user()
+        self._upstream_password = dlg.get_upstream_password()
         self._port_label.setText(f"포트  {self._proxy_port}")
 
         if engine_changed:
@@ -670,8 +689,16 @@ class MainWindow(QMainWindow):
                 f"프록시 엔진이 [{kind}]으로 변경되었습니다.",
             )
 
+        self._apply_upstream_to_engine()
+
         if was_running:
             self._start_capture()
+
+    @Slot(object)
+    def _on_replay_in_composer(self, session) -> None:
+        """Load session into Composer tab and switch to it."""
+        self._composer_panel.load_from_session(session)
+        self._switch_right_panel(self._composer_panel)
 
     @Slot()
     def _on_cert_manager(self):
@@ -830,6 +857,19 @@ class MainWindow(QMainWindow):
             engine = StubProxyEngine(self)
         return engine
 
+    def _apply_upstream_to_engine(self) -> None:
+        """Push upstream proxy config into the engine (no-op for StubProxyEngine)."""
+        if not isinstance(self._engine, MitmproxyEngine):
+            return
+        if self._upstream_enabled and self._upstream_host:
+            user = self._upstream_user if self._upstream_auth_enabled else ""
+            pw   = self._upstream_password if self._upstream_auth_enabled else ""
+            self._engine.set_upstream_proxy(
+                self._upstream_host, self._upstream_port, user, pw
+            )
+        else:
+            self._engine.set_upstream_proxy("", self._upstream_port)
+
     def _start_capture(self):
         self._toolbar.set_capturing(True)
         self._act_capture.setChecked(True)
@@ -844,6 +884,7 @@ class MainWindow(QMainWindow):
                     "브라우저에서 수동으로 127.0.0.1:"
                     f"{self._proxy_port}로 설정해 주세요.",
                 )
+        self._apply_upstream_to_engine()
         self._engine.start(self._proxy_port)
 
     def _stop_capture(self):
