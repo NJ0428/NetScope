@@ -702,18 +702,8 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def _on_cert_manager(self):
-        import sys
-        from netscope.utils.system_proxy import install_ca_cert_windows, get_ca_cert_path
-        if sys.platform != "win32":
-            QMessageBox.information(
-                self, "인증서 관리자",
-                "Windows에서만 자동 설치를 지원합니다.\n"
-                "CA 인증서 위치: ~/.mitmproxy/mitmproxy-ca-cert.pem",
-            )
-            return
-        ok, msg = install_ca_cert_windows()
-        icon = QMessageBox.Icon.Information if ok else QMessageBox.Icon.Warning
-        QMessageBox(icon, "인증서 관리자", msg, parent=self).exec()
+        from netscope.ui.dialogs.cert_manager_dialog import CertManagerDialog
+        CertManagerDialog(self).exec()
 
     def _sync_menu_checks(self):
         """Sync checkable menu items with current rules state (after dialog edits)."""
