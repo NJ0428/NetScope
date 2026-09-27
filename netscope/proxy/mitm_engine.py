@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 from netscope.models.session import SessionEntry, SessionState
 from netscope.proxy.engine import ProxyEngine
+from netscope.rules.script_runner import ScriptContext
 
 if TYPE_CHECKING:
     from netscope.rules.rules_engine import RulesEngine
@@ -50,6 +51,15 @@ class _NetScopeAddon:
             if rules.auto_authenticate:
                 flow.request.headers["Authorization"] = "Bearer auto-token"
 
+        # ── Custom script: on_request ──────────────────────────────────────
+        if rules and rules.custom_script_enabled:
+            ctx = ScriptContext.from_flow_request(flow)
+            err = rules.script_runner.run_request(ctx)
+            if err:
+                rules.add_script_error(err)
+            else:
+                ctx.apply_to_flow()
+
         # ── Build SessionEntry ─────────────────────────────────────────────
         session = SessionEntry(
             method=flow.request.method,
@@ -81,6 +91,15 @@ class _NetScopeAddon:
         # ── Rule: hide 304 Not Modified ────────────────────────────────────
         if rules and rules.hide_304s and flow.response.status_code == 304:
             return
+
+        # ── Custom script: on_response ─────────────────────────────────────
+        if rules and rules.custom_script_enabled:
+            ctx = ScriptContext.from_flow_response(flow)
+            err = rules.script_runner.run_response(ctx)
+            if err:
+                rules.add_script_error(err)
+            else:
+                ctx.apply_to_flow()
 
         # ── Elapsed time ───────────────────────────────────────────────────
         elapsed_ms = 0.0
