@@ -622,7 +622,10 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def _on_customize_rules(self):
-        CustomizeRulesDialog(self._rules, self).exec()
+        dlg = CustomizeRulesDialog(self._rules, self)
+        if dlg.exec() and self._rules.custom_script_enabled:
+            # Re-load compiled script so it's ready for the next capture
+            self._rules.load_script()
 
     @Slot()
     def _on_user_agent(self):
