@@ -5,6 +5,7 @@ This module defines the interface that a real proxy engine must implement.
 The StubProxyEngine generates fake traffic for UI development and testing.
 """
 
+import datetime
 import gzip
 import random
 import threading
@@ -40,6 +41,12 @@ class ProxyEngine(QObject):
                           modified_headers: dict | None = None,
                           modified_body: bytes | None = None):
         """Resume a paused breakpoint session. Default: no-op."""
+
+
+def _utc_now_iso() -> str:
+    """Return current UTC time as ISO 8601 string compatible with HAR spec."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    return now.strftime("%Y-%m-%dT%H:%M:%S.") + f"{now.microsecond // 1000:03d}Z"
 
 
 SAMPLE_HOSTS = [
@@ -196,6 +203,7 @@ class StubProxyEngine(ProxyEngine):
                 url=f"https://{host}{path}",
                 request_headers=req_headers,
                 request_body=b'{"query": "test"}' if method == "POST" else b"",
+                started_at=_utc_now_iso(),
             )
 
             # Emit session to UI (shows in table as PENDING)

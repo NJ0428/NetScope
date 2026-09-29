@@ -27,6 +27,7 @@ class SessionEntry:
     response_headers: dict[str, str] = field(default_factory=dict)
     response_body: bytes = b""
     mark_color: str | None = None
+    started_at: str = ""  # ISO 8601 UTC timestamp, e.g. "2026-09-30T10:00:00.000Z"
 
     @property
     def size_display(self) -> str:

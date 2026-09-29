@@ -8,11 +8,12 @@ MitmproxyEngine and check MitmproxyEngine.AVAILABLE before using.
 from __future__ import annotations
 
 import asyncio
+import datetime
 import threading
 from typing import TYPE_CHECKING
 
 from netscope.models.session import SessionEntry, SessionState
-from netscope.proxy.engine import ProxyEngine
+from netscope.proxy.engine import ProxyEngine, _utc_now_iso
 from netscope.rules.script_runner import ScriptContext
 
 if TYPE_CHECKING:
@@ -69,6 +70,7 @@ class _NetScopeAddon:
             url=flow.request.url,
             request_headers=dict(flow.request.headers),
             request_body=flow.request.content or b"",
+            started_at=_utc_now_iso(),
         )
 
         self._flow_to_sid[flow.id] = session.id
