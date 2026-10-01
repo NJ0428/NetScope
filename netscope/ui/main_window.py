@@ -139,6 +139,13 @@ class MainWindow(QMainWindow):
         act_export.triggered.connect(self._on_export)
         file_menu.addAction(act_export)
 
+        act_export_selected = QAction(
+            "선택 세션 HAR 내보내기 (Export Selected as HAR)...", self,
+            shortcut=QKeySequence("Ctrl+Shift+E"),
+        )
+        act_export_selected.triggered.connect(self._on_export_selected)
+        file_menu.addAction(act_export_selected)
+
         file_menu.addSeparator()
 
         act_quit = QAction("종료 (Exit)", self, shortcut=QKeySequence.StandardKey.Quit)
@@ -595,6 +602,7 @@ class MainWindow(QMainWindow):
 
         self._table_view.session_selected.connect(self._on_session_selected)
         self._table_view.replay_requested.connect(self._on_replay_in_composer)
+        self._table_view.har_export_requested.connect(self._on_export_har_sessions)
         self._table_view.set_rules(self._rules)
 
         self._engine.session_started.connect(
@@ -1213,7 +1221,7 @@ class MainWindow(QMainWindow):
             return
         default = Path(self._current_file).stem if self._current_file else "세션"
         path, _ = QFileDialog.getSaveFileName(
-            self, "HAR 내보내기", default,
+            self, "HAR 내보내기 (전체)", default,
             "HTTP Archive (*.har);;모든 파일 (*)",
         )
         if not path:
@@ -1221,8 +1229,42 @@ class MainWindow(QMainWindow):
         if not path.endswith(".har"):
             path += ".har"
         try:
-            self._export_har(path)
-            QMessageBox.information(self, "내보내기 완료", f"HAR 파일로 저장되었습니다:\n{path}")
+            sessions = self._session_model.get_all_sessions()
+            _write_har(sessions, path)
+            QMessageBox.information(
+                self, "내보내기 완료",
+                f"HAR 파일로 저장되었습니다 ({len(sessions)}개 세션):\n{path}",
+            )
+        except Exception as exc:
+            QMessageBox.critical(self, "내보내기 실패", f"HAR 파일을 저장할 수 없습니다:\n{exc}")
+
+    @Slot()
+    def _on_export_selected(self):
+        sessions = self._table_view.get_selected_sessions()
+        if not sessions:
+            QMessageBox.information(self, "내보내기", "선택된 세션이 없습니다.")
+            return
+        self._on_export_har_sessions(sessions)
+
+    @Slot(list)
+    def _on_export_har_sessions(self, sessions: list):
+        if not sessions:
+            return
+        default = Path(self._current_file).stem if self._current_file else "선택_세션"
+        path, _ = QFileDialog.getSaveFileName(
+            self, f"HAR 내보내기 ({len(sessions)}개 세션)", default,
+            "HTTP Archive (*.har);;모든 파일 (*)",
+        )
+        if not path:
+            return
+        if not path.endswith(".har"):
+            path += ".har"
+        try:
+            _write_har(sessions, path)
+            QMessageBox.information(
+                self, "내보내기 완료",
+                f"HAR 파일로 저장되었습니다 ({len(sessions)}개 세션):\n{path}",
+            )
         except Exception as exc:
             QMessageBox.critical(self, "내보내기 실패", f"HAR 파일을 저장할 수 없습니다:\n{exc}")
 
@@ -1254,6 +1296,7 @@ class MainWindow(QMainWindow):
         self._add_to_recent(path)
 
     def _import_har(self, path: str):
+        from urllib.parse import urlparse
         with open(path, "r", encoding="utf-8") as f:
             har = json.load(f)
         entries = har.get("log", {}).get("entries", [])
@@ -1262,16 +1305,25 @@ class MainWindow(QMainWindow):
             req = entry.get("request", {})
             resp = entry.get("response", {})
             url = req.get("url", "")
-            from urllib.parse import urlparse
             parsed = urlparse(url)
             req_headers = {h["name"]: h["value"] for h in req.get("headers", [])}
             resp_headers = {h["name"]: h["value"] for h in resp.get("headers", [])}
             req_body_text = (req.get("postData") or {}).get("text", "")
-            resp_body_text = (resp.get("content") or {}).get("text", "")
+            content_obj = resp.get("content") or {}
+            resp_body_text = content_obj.get("text", "")
+            # Handle base64-encoded binary content from HAR
+            if content_obj.get("encoding") == "base64" and resp_body_text:
+                resp_body = base64.b64decode(resp_body_text)
+            else:
+                resp_body = resp_body_text.encode("utf-8", errors="replace")
             body_size = resp.get("bodySize", 0) or 0
-            elapsed = entry.get("timings", {}).get("wait", 0) or 0
+            timings = entry.get("timings", {})
+            elapsed = sum(
+                v for v in (timings.get("send", 0), timings.get("wait", 0), timings.get("receive", 0))
+                if isinstance(v, (int, float)) and v >= 0
+            )
             status = resp.get("status", 0)
-            content_type = resp_headers.get("Content-Type", "")
+            content_type = resp_headers.get("Content-Type", "") or content_obj.get("mimeType", "")
             s = SessionEntry(
                 id=i,
                 method=req.get("method", "GET"),
@@ -1287,7 +1339,8 @@ class MainWindow(QMainWindow):
                 request_headers=req_headers,
                 request_body=req_body_text.encode("utf-8", errors="replace"),
                 response_headers=resp_headers,
-                response_body=resp_body_text.encode("utf-8", errors="replace"),
+                response_body=resp_body,
+                started_at=entry.get("startedDateTime", ""),
             )
             sessions.append(s)
         self._session_model.load_sessions(sessions)
@@ -1297,53 +1350,6 @@ class MainWindow(QMainWindow):
         self._modified = False
         self._update_title()
 
-    def _export_har(self, path: str):
-        import datetime
-        entries = []
-        for s in self._session_model.get_all_sessions():
-            req_headers = [{"name": k, "value": v} for k, v in s.request_headers.items()]
-            resp_headers = [{"name": k, "value": v} for k, v in s.response_headers.items()]
-            entries.append({
-                "startedDateTime": datetime.datetime.utcnow().isoformat() + "Z",
-                "time": s.elapsed_ms,
-                "request": {
-                    "method": s.method,
-                    "url": s.url,
-                    "httpVersion": "HTTP/1.1",
-                    "headers": req_headers,
-                    "queryString": [],
-                    "cookies": [],
-                    "headersSize": -1,
-                    "bodySize": len(s.request_body),
-                    "postData": {"mimeType": "", "text": s.request_body.decode("utf-8", errors="replace")} if s.request_body else None,
-                },
-                "response": {
-                    "status": s.status_code,
-                    "statusText": "",
-                    "httpVersion": "HTTP/1.1",
-                    "headers": resp_headers,
-                    "cookies": [],
-                    "content": {
-                        "size": s.body_size,
-                        "mimeType": s.content_type,
-                        "text": s.response_body.decode("utf-8", errors="replace"),
-                    },
-                    "redirectURL": "",
-                    "headersSize": -1,
-                    "bodySize": s.body_size,
-                },
-                "cache": {},
-                "timings": {"send": 0, "wait": s.elapsed_ms, "receive": 0},
-            })
-        har = {
-            "log": {
-                "version": "1.2",
-                "creator": {"name": "NetScope", "version": "1.0"},
-                "entries": entries,
-            }
-        }
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(har, f, ensure_ascii=False, indent=2)
 
     # ── UI state helpers ──────────────────────────────────────────────────────
 
@@ -1901,6 +1907,7 @@ def _session_to_dict(s: SessionEntry) -> dict:
         "body_size": s.body_size,
         "elapsed_ms": s.elapsed_ms,
         "state": s.state.value,
+        "started_at": s.started_at,
         "request_headers": s.request_headers,
         "request_body": base64.b64encode(s.request_body).decode(),
         "response_headers": s.response_headers,
@@ -1921,11 +1928,237 @@ def _session_from_dict(d: dict) -> SessionEntry:
         body_size=d.get("body_size", 0),
         elapsed_ms=d.get("elapsed_ms", 0.0),
         state=SessionState(d.get("state", "complete")),
+        started_at=d.get("started_at", ""),
         request_headers=d.get("request_headers", {}),
         request_body=base64.b64decode(d.get("request_body", "")),
         response_headers=d.get("response_headers", {}),
         response_body=base64.b64decode(d.get("response_body", "")),
     )
+
+
+# ── HAR export helpers ────────────────────────────────────────────────────────
+
+_HTTP_STATUS_TEXT: dict[int, str] = {
+    100: "Continue", 101: "Switching Protocols",
+    200: "OK", 201: "Created", 202: "Accepted", 204: "No Content",
+    206: "Partial Content",
+    301: "Moved Permanently", 302: "Found", 303: "See Other",
+    304: "Not Modified", 307: "Temporary Redirect", 308: "Permanent Redirect",
+    400: "Bad Request", 401: "Unauthorized", 403: "Forbidden",
+    404: "Not Found", 405: "Method Not Allowed", 408: "Request Timeout",
+    409: "Conflict", 410: "Gone", 422: "Unprocessable Entity",
+    429: "Too Many Requests",
+    500: "Internal Server Error", 501: "Not Implemented",
+    502: "Bad Gateway", 503: "Service Unavailable", 504: "Gateway Timeout",
+}
+
+_TEXT_MIME_TYPES = frozenset({
+    "application/json", "application/xml", "application/javascript",
+    "application/xhtml+xml", "application/x-www-form-urlencoded",
+    "application/ld+json", "application/graphql",
+})
+
+
+def _is_text_mime(mime: str) -> bool:
+    m = mime.split(";")[0].strip().lower()
+    return (
+        m.startswith("text/") or
+        m in _TEXT_MIME_TYPES or
+        m.endswith("+json") or
+        m.endswith("+xml")
+    )
+
+
+def _resource_type(mime: str, method: str) -> str:
+    m = mime.split(";")[0].strip().lower()
+    if m.startswith("image/"):
+        return "image"
+    if m in ("application/javascript", "text/javascript"):
+        return "script"
+    if m == "text/css":
+        return "stylesheet"
+    if m in ("text/html", "application/xhtml+xml"):
+        return "document"
+    if m.startswith("font/") or m in (
+        "application/font-woff", "application/font-woff2",
+        "application/x-font-ttf", "application/x-font-opentype",
+    ):
+        return "font"
+    if m.startswith("audio/") or m.startswith("video/"):
+        return "media"
+    if m in ("application/json", "application/xml") or method in (
+        "POST", "PUT", "PATCH", "DELETE",
+    ):
+        return "fetch"
+    return "other"
+
+
+def _parse_request_cookies(headers: dict) -> list[dict]:
+    cookie_val = headers.get("Cookie") or headers.get("cookie", "")
+    cookies = []
+    for part in cookie_val.split(";"):
+        part = part.strip()
+        if "=" in part:
+            name, value = part.split("=", 1)
+            cookies.append({"name": name.strip(), "value": value.strip()})
+    return cookies
+
+
+def _parse_response_cookies(headers: dict) -> list[dict]:
+    # Response may have a single Set-Cookie header (multi-value not typically
+    # stored as list in our model, so parse the first one only)
+    set_cookie = headers.get("Set-Cookie") or headers.get("set-cookie", "")
+    if not set_cookie:
+        return []
+    cookies = []
+    for header_val in set_cookie.split("\n"):  # some implementations join with \n
+        parts = header_val.split(";")
+        kv = parts[0].strip()
+        if "=" in kv:
+            name, value = kv.split("=", 1)
+            entry: dict = {"name": name.strip(), "value": value.strip()}
+            # Parse optional attributes
+            for attr in parts[1:]:
+                attr = attr.strip()
+                low = attr.lower()
+                if low.startswith("path="):
+                    entry["path"] = attr[5:]
+                elif low.startswith("domain="):
+                    entry["domain"] = attr[7:]
+                elif low.startswith("expires="):
+                    entry["expires"] = attr[8:]
+                elif low == "httponly":
+                    entry["httpOnly"] = True
+                elif low == "secure":
+                    entry["secure"] = True
+            cookies.append(entry)
+    return cookies
+
+
+def _headers_size(first_line: str, headers: dict) -> int:
+    lines = first_line + "\r\n"
+    lines += "\r\n".join(f"{k}: {v}" for k, v in headers.items())
+    lines += "\r\n\r\n"
+    return len(lines.encode("utf-8", errors="replace"))
+
+
+def _build_har_entry(s: "SessionEntry") -> dict:
+    import datetime as _dt
+    from urllib.parse import urlparse, parse_qsl
+
+    started_dt = s.started_at or (
+        _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.")
+        + f"{_dt.datetime.now(_dt.timezone.utc).microsecond // 1000:03d}Z"
+    )
+
+    parsed_url = urlparse(s.url)
+    query_string = [
+        {"name": k, "value": v}
+        for k, v in parse_qsl(parsed_url.query, keep_blank_values=True)
+    ]
+
+    req_first_line = f"{s.method} {s.path or '/'} HTTP/1.1"
+    resp_status_text = _HTTP_STATUS_TEXT.get(s.status_code, "")
+    resp_first_line = f"HTTP/1.1 {s.status_code} {resp_status_text}"
+
+    req_headers_size = _headers_size(req_first_line, s.request_headers)
+    resp_headers_size = _headers_size(resp_first_line, s.response_headers) if s.response_headers else -1
+
+    req_headers_list = [{"name": k, "value": v} for k, v in s.request_headers.items()]
+    resp_headers_list = [{"name": k, "value": v} for k, v in s.response_headers.items()]
+
+    req_mime = (
+        s.request_headers.get("Content-Type") or
+        s.request_headers.get("content-type", "")
+    )
+    post_data = None
+    if s.request_body:
+        post_data = {
+            "mimeType": req_mime or "application/octet-stream",
+            "text": s.request_body.decode("utf-8", errors="replace"),
+        }
+
+    # Response content — binary bodies are base64-encoded per HAR spec
+    mime = s.content_type or ""
+    if _is_text_mime(mime):
+        content: dict = {
+            "size": s.body_size,
+            "mimeType": mime or "application/octet-stream",
+            "text": s.response_body.decode("utf-8", errors="replace"),
+        }
+    else:
+        content = {
+            "size": s.body_size,
+            "mimeType": mime or "application/octet-stream",
+            "text": base64.b64encode(s.response_body).decode(),
+            "encoding": "base64",
+        }
+
+    redirect_url = (
+        s.response_headers.get("Location") or
+        s.response_headers.get("location", "")
+    )
+
+    return {
+        "startedDateTime": started_dt,
+        "time": s.elapsed_ms,
+        "request": {
+            "method": s.method,
+            "url": s.url,
+            "httpVersion": "HTTP/1.1",
+            "cookies": _parse_request_cookies(s.request_headers),
+            "headers": req_headers_list,
+            "queryString": query_string,
+            "headersSize": req_headers_size,
+            "bodySize": len(s.request_body),
+            **({"postData": post_data} if post_data else {}),
+        },
+        "response": {
+            "status": s.status_code,
+            "statusText": resp_status_text,
+            "httpVersion": "HTTP/1.1",
+            "cookies": _parse_response_cookies(s.response_headers),
+            "headers": resp_headers_list,
+            "content": content,
+            "redirectURL": redirect_url,
+            "headersSize": resp_headers_size,
+            "bodySize": s.body_size,
+        },
+        "cache": {},
+        "timings": {
+            "blocked": -1,
+            "dns": -1,
+            "connect": -1,
+            "send": 0,
+            "wait": s.elapsed_ms,
+            "receive": 0,
+            "ssl": -1,
+        },
+        "_resourceType": _resource_type(mime, s.method),
+    }
+
+
+def _write_har(sessions: list, path: str) -> None:
+    import datetime as _dt
+    entries = [_build_har_entry(s) for s in sessions]
+    har = {
+        "log": {
+            "version": "1.2",
+            "creator": {
+                "name": "NetScope",
+                "version": "1.0",
+                "comment": "https://github.com/NetScope",
+            },
+            "browser": {
+                "name": "NetScope",
+                "version": "1.0",
+            },
+            "pages": [],
+            "entries": entries,
+        }
+    }
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(har, f, ensure_ascii=False, indent=2)
 
 
 # ── Recent-files config ───────────────────────────────────────────────────────
