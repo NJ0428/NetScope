@@ -260,6 +260,20 @@ class MitmproxyEngine(ProxyEngine):
         except Exception as exc:
             self.status_changed.emit(f"프록시 오류: {exc}")
         finally:
+            # Cancel all pending tasks before closing the loop.
+            # On Windows the IocpProactor leaves accept coroutines in a
+            # pending state after shutdown; cancelling them explicitly
+            # suppresses the "Task was destroyed but it is pending!" warnings.
+            try:
+                pending = asyncio.all_tasks(self._loop)
+                if pending:
+                    for task in pending:
+                        task.cancel()
+                    self._loop.run_until_complete(
+                        asyncio.gather(*pending, return_exceptions=True)
+                    )
+            except Exception:
+                pass
             self._loop.close()
             self._loop = None
             self._running = False
