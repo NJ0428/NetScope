@@ -56,9 +56,10 @@ class SessionFilterProxy(QSortFilterProxyModel):
 
 
 class SessionTableView(QTableView):
-    session_selected = Signal(int)       # row in source model
-    replay_requested = Signal(object)    # SessionEntry
+    session_selected    = Signal(int)    # row in source model
+    replay_requested    = Signal(object) # SessionEntry
     har_export_requested = Signal(list)  # list[SessionEntry]
+    compare_requested   = Signal(list)   # list[SessionEntry] — exactly 2 items
 
     def __init__(self, model: SessionTableModel, parent=None):
         super().__init__(parent)
@@ -159,6 +160,14 @@ class SessionTableView(QTableView):
         menu.addAction(act_replay)
 
         menu.addSeparator()
+
+        if len(sessions) == 2:
+            act_compare = QAction("세션 비교 (Compare Sessions)", self)
+            act_compare.triggered.connect(
+                lambda: self.compare_requested.emit(sessions)
+            )
+            menu.addAction(act_compare)
+            menu.addSeparator()
 
         label = (
             f"선택 세션 HAR 내보내기 ({len(sessions)}개)"
