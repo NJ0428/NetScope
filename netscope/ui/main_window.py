@@ -24,6 +24,7 @@ from netscope.ui.composer_panel import ComposerPanel
 from netscope.ui.detail_panel import DetailPanel
 from netscope.ui.statistics_panel import StatisticsPanel
 from netscope.ui.dialogs.breakpoint_dialog import BreakpointDialog
+from netscope.ui.dialogs.diff_dialog import DiffDialog
 from netscope.ui.dialogs.customize_rules_dialog import CustomizeRulesDialog
 from netscope.ui.dialogs.performance_dialog import PerformanceDialog
 from netscope.ui.dialogs.proxy_settings_dialog import ProxySettingsDialog
@@ -258,6 +259,16 @@ class MainWindow(QMainWindow):
         )
         act_find_sessions.triggered.connect(self._on_find_sessions)
         edit_menu.addAction(act_find_sessions)
+
+        edit_menu.addSeparator()
+
+        self._act_compare = QAction(
+            "세션 비교 (Compare Sessions)", self,
+            shortcut=QKeySequence("Ctrl+D"),
+        )
+        self._act_compare.setEnabled(False)
+        self._act_compare.triggered.connect(self._on_compare_sessions_menu)
+        edit_menu.addAction(self._act_compare)
 
         # 규칙
         rules_menu = mb.addMenu("규칙")
@@ -603,6 +614,7 @@ class MainWindow(QMainWindow):
         self._table_view.session_selected.connect(self._on_session_selected)
         self._table_view.replay_requested.connect(self._on_replay_in_composer)
         self._table_view.har_export_requested.connect(self._on_export_har_sessions)
+        self._table_view.compare_requested.connect(self._on_compare_sessions)
         self._table_view.set_rules(self._rules)
 
         self._engine.session_started.connect(
@@ -710,6 +722,23 @@ class MainWindow(QMainWindow):
         """Load session into Composer tab and switch to it."""
         self._composer_panel.load_from_session(session)
         self._switch_right_panel(self._composer_panel)
+
+    @Slot(list)
+    def _on_compare_sessions(self, sessions: list) -> None:
+        """Open side-by-side diff dialog for exactly two sessions."""
+        if len(sessions) != 2:
+            return
+        dlg = DiffDialog(sessions[0], sessions[1], self)
+        dlg.exec()
+
+    @Slot()
+    def _on_compare_sessions_menu(self) -> None:
+        """Triggered from Edit menu — uses current table selection."""
+        sessions = self._table_view.get_selected_sessions()
+        if len(sessions) != 2:
+            return
+        dlg = DiffDialog(sessions[0], sessions[1], self)
+        dlg.exec()
 
     @Slot()
     def _on_cert_manager(self):
@@ -920,6 +949,8 @@ class MainWindow(QMainWindow):
             self._detail_panel.show_session(session)
             self._right_stack.setCurrentIndex(1)
             self._switch_right_panel(self._inspector_container)
+        selected = self._table_view.get_selected_sessions()
+        self._act_compare.setEnabled(len(selected) == 2)
 
     @Slot(SessionEntry)
     def _on_session_started(self, session: SessionEntry):
