@@ -387,7 +387,13 @@ class HexViewWidget(QWidget):
 
 
 class WebViewWidget(QWidget):
-    """Renders HTML/text in QWebEngineView; falls back to source view."""
+    """Renders HTML/text in QWebEngineView with live preview and resource-block option.
+
+    Toolbar:
+    - 외부 리소스 차단: intercepts and blocks external HTTP/HTTPS requests
+    - 새로고침: re-renders current content
+    Falls back to plain-text source view if PySide6-WebEngine is not installed.
+    """
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -395,11 +401,87 @@ class WebViewWidget(QWidget):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(0)
 
+        self._body: bytes = b""
+        self._headers: dict = {}
+        self._block_chk = None  # only set in web mode
+
         try:
             from PySide6.QtWebEngineWidgets import QWebEngineView  # type: ignore
+            from PySide6.QtWebEngineCore import (  # type: ignore
+                QWebEnginePage, QWebEngineProfile,
+                QWebEngineUrlRequestInterceptor,
+            )
+
+            # ── URL interceptor (blocks external resources when enabled) ──
+            class _Interceptor(QWebEngineUrlRequestInterceptor):
+                def __init__(self2, parent=None):
+                    super().__init__(parent)
+                    self2._block = False
+
+                def set_block(self2, v: bool):
+                    self2._block = v
+
+                def interceptRequest(self2, info):
+                    if not self2._block:
+                        return
+                    scheme = info.requestUrl().scheme()
+                    # Allow inline / local schemes; block everything else
+                    if scheme not in ("data", "about", "blob", "qrc", ""):
+                        info.block(True)
+
+            # ── Toolbar ───────────────────────────────────────────────────
+            from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QPushButton
+
+            bar = QWidget()
+            bar.setFixedHeight(32)
+            bar.setStyleSheet(
+                "QWidget { background:#f5f5f5; border-bottom:1px solid #e0e0e0; }"
+            )
+            h = QHBoxLayout(bar)
+            h.setContentsMargins(8, 0, 8, 0)
+            h.setSpacing(8)
+
+            self._block_chk = QCheckBox("외부 리소스 차단")
+            self._block_chk.setToolTip(
+                "외부 도메인의 CSS, JS, 이미지 등 모든 리소스 로드를 차단합니다"
+            )
+            self._block_chk.setStyleSheet("font-size:11px;")
+            h.addWidget(self._block_chk)
+
+            reload_btn = QPushButton("↺  새로고침")
+            reload_btn.setFixedHeight(22)
+            reload_btn.setStyleSheet(
+                "QPushButton { font-size:11px; padding:0 10px; border:1px solid #ccc;"
+                " border-radius:3px; background:#fff; color:#333; }"
+                "QPushButton:hover { background:#e8e8e8; }"
+                "QPushButton:pressed { background:#d0d0d0; }"
+            )
+            reload_btn.clicked.connect(self._reload)
+            h.addWidget(reload_btn)
+
+            h.addStretch()
+
+            self._status_lbl = QLabel()
+            self._status_lbl.setStyleSheet("color:#888; font-size:10px;")
+            h.addWidget(self._status_lbl)
+
+            lay.addWidget(bar)
+
+            # ── Off-the-record profile + interceptor ──────────────────────
+            self._profile = QWebEngineProfile()          # off-the-record (no disk cache)
+            self._interceptor = _Interceptor(self._profile)
+            self._profile.setUrlRequestInterceptor(self._interceptor)
+
+            self._page = QWebEnginePage(self._profile, self)
             self._web = QWebEngineView()
+            self._web.setPage(self._page)
+            self._page.loadFinished.connect(self._on_load_finished)
+
+            self._block_chk.toggled.connect(self._on_block_toggled)
+
             lay.addWidget(self._web)
             self._mode = "web"
+
         except ImportError:
             self._web = None
             note = QLabel("  ⚠  PySide6-WebEngine 미설치 — HTML 소스로 표시합니다")
@@ -411,16 +493,44 @@ class WebViewWidget(QWidget):
             lay.addWidget(self._edit)
             self._mode = "text"
 
-    def show_body(self, body: bytes, headers: dict):
-        ct  = _ct_base(headers)
-        text = _decode_body(body, headers)
+    # ── private slots ─────────────────────────────────────────────────────────
+
+    def _on_block_toggled(self, checked: bool):
+        self._interceptor.set_block(checked)
+        self._reload()
+
+    def _reload(self):
         if self._mode == "web" and self._web is not None:
-            if "html" in ct or (text or "").lstrip().startswith("<"):
-                self._web.setHtml(text or "")
-            else:
-                self._web.setContent(body or b"", ct or "text/plain")
+            self._render(self._body, self._headers)
+
+    def _render(self, body: bytes, headers: dict):
+        ct = _ct_base(headers)
+        text = _decode_body(body, headers)
+        if "html" in ct or (text or "").lstrip().startswith("<"):
+            self._web.setHtml(text or "")
         else:
-            self._edit.setPlainText(text or "(비어 있음)")
+            self._web.setContent(body or b"", ct or "text/plain")
+        self._status_lbl.setText(f"렌더링 중…  ({len(body):,} bytes)")
+
+    def _on_load_finished(self, ok: bool):
+        ct = _ct_base(self._headers)
+        blocked = "  ·  외부 차단 중" if (
+            self._block_chk and self._block_chk.isChecked()
+        ) else ""
+        icon = "✓" if ok else "✗"
+        self._status_lbl.setText(
+            f"{icon}  {ct or 'text/html'}  ·  {len(self._body):,} bytes{blocked}"
+        )
+
+    # ── public ────────────────────────────────────────────────────────────────
+
+    def show_body(self, body: bytes, headers: dict):
+        self._body = body or b""
+        self._headers = headers or {}
+        if self._mode == "web" and self._web is not None:
+            self._render(self._body, self._headers)
+        else:
+            self._edit.setPlainText(_decode_body(body, headers) or "(비어 있음)")
 
 
 class AuthView(QWidget):
