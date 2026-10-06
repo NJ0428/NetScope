@@ -63,6 +63,14 @@ def _h_line() -> QFrame:
     return f
 
 
+def _v_sep() -> QFrame:
+    f = QFrame()
+    f.setFrameShape(QFrame.Shape.VLine)
+    f.setFixedWidth(1)
+    f.setStyleSheet("background: #d0d0d0;")
+    return f
+
+
 def _charset(headers: dict) -> str:
     for k, v in headers.items():
         if k.lower() == "content-type":
@@ -387,13 +395,50 @@ class HexViewWidget(QWidget):
 
 
 class WebViewWidget(QWidget):
-    """Renders HTML/text in QWebEngineView with live preview and resource-block option.
+    """Renders HTML/text in QWebEngineView with live preview, resource-block,
+    and mobile/desktop viewport switching.
 
-    Toolbar:
-    - 외부 리소스 차단: intercepts and blocks external HTTP/HTTPS requests
-    - 새로고침: re-renders current content
-    Falls back to plain-text source view if PySide6-WebEngine is not installed.
+    Toolbar (left → right):
+    - 외부 리소스 차단 checkbox   – blocks external HTTP/HTTPS via URL interceptor
+    - ↺ 새로고침 button           – re-renders current body
+    - | separator |
+    - 🖥 데스크톱 / 📱 모바일     – viewport preset toggle (exclusive button group)
+    - stretch
+    - status label
+
+    Mobile preset  : UA = iPhone 17, viewport width = 390 px
+    Desktop preset : UA = Chrome/Windows, viewport width = 1280 px
+    Falls back to plain-text if PySide6-WebEngine is not installed.
     """
+
+    _MOBILE_UA = (
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
+        "AppleWebKit/605.1.15 (KHTML, like Gecko) "
+        "Version/17.0 Mobile/15E148 Safari/604.1"
+    )
+    _DESKTOP_UA = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/125.0.0.0 Safari/537.36"
+    )
+    _MOBILE_W  = 390
+    _DESKTOP_W = 1280
+
+    # ── segmented-button style ──────────────────────────────────────────────
+    _SEG_L = (
+        "QPushButton { font-size:11px; padding:0 10px; height:22px;"
+        " border:1px solid #bbb; border-right:none;"
+        " border-radius:3px 0 0 3px; background:#fff; color:#333; }"
+        "QPushButton:hover:!checked { background:#f0f0f0; }"
+        "QPushButton:checked { background:#0078d4; color:#fff; border-color:#0060b0; }"
+    )
+    _SEG_R = (
+        "QPushButton { font-size:11px; padding:0 10px; height:22px;"
+        " border:1px solid #bbb;"
+        " border-radius:0 3px 3px 0; background:#fff; color:#333; }"
+        "QPushButton:hover:!checked { background:#f0f0f0; }"
+        "QPushButton:checked { background:#0078d4; color:#fff; border-color:#0060b0; }"
+    )
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -403,7 +448,10 @@ class WebViewWidget(QWidget):
 
         self._body: bytes = b""
         self._headers: dict = {}
-        self._block_chk = None  # only set in web mode
+        self._block_chk  = None   # set only in web mode
+        self._mobile_btn = None
+        self._view_grp   = None
+        self._is_mobile  = False
 
         try:
             from PySide6.QtWebEngineWidgets import QWebEngineView  # type: ignore
@@ -411,8 +459,11 @@ class WebViewWidget(QWidget):
                 QWebEnginePage, QWebEngineProfile,
                 QWebEngineUrlRequestInterceptor,
             )
+            from PySide6.QtWidgets import (
+                QButtonGroup, QCheckBox, QHBoxLayout, QPushButton,
+            )
 
-            # ── URL interceptor (blocks external resources when enabled) ──
+            # ── URL interceptor ───────────────────────────────────────────
             class _Interceptor(QWebEngineUrlRequestInterceptor):
                 def __init__(self2, parent=None):
                     super().__init__(parent)
@@ -425,13 +476,10 @@ class WebViewWidget(QWidget):
                     if not self2._block:
                         return
                     scheme = info.requestUrl().scheme()
-                    # Allow inline / local schemes; block everything else
                     if scheme not in ("data", "about", "blob", "qrc", ""):
                         info.block(True)
 
             # ── Toolbar ───────────────────────────────────────────────────
-            from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QPushButton
-
             bar = QWidget()
             bar.setFixedHeight(32)
             bar.setStyleSheet(
@@ -439,8 +487,9 @@ class WebViewWidget(QWidget):
             )
             h = QHBoxLayout(bar)
             h.setContentsMargins(8, 0, 8, 0)
-            h.setSpacing(8)
+            h.setSpacing(6)
 
+            # Block checkbox
             self._block_chk = QCheckBox("외부 리소스 차단")
             self._block_chk.setToolTip(
                 "외부 도메인의 CSS, JS, 이미지 등 모든 리소스 로드를 차단합니다"
@@ -448,6 +497,7 @@ class WebViewWidget(QWidget):
             self._block_chk.setStyleSheet("font-size:11px;")
             h.addWidget(self._block_chk)
 
+            # Reload button
             reload_btn = QPushButton("↺  새로고침")
             reload_btn.setFixedHeight(22)
             reload_btn.setStyleSheet(
@@ -459,7 +509,31 @@ class WebViewWidget(QWidget):
             reload_btn.clicked.connect(self._reload)
             h.addWidget(reload_btn)
 
+            # Separator
+            h.addWidget(_v_sep())
+            h.setSpacing(0)
+
+            # Viewport toggle — Desktop (left) / Mobile (right)
+            desktop_btn = QPushButton("🖥  데스크톱")
+            desktop_btn.setCheckable(True)
+            desktop_btn.setChecked(True)
+            desktop_btn.setStyleSheet(self._SEG_L)
+
+            self._mobile_btn = QPushButton("📱  모바일")
+            self._mobile_btn.setCheckable(True)
+            self._mobile_btn.setStyleSheet(self._SEG_R)
+
+            self._view_grp = QButtonGroup(self)
+            self._view_grp.setExclusive(True)
+            self._view_grp.addButton(desktop_btn, 0)   # id 0 = desktop
+            self._view_grp.addButton(self._mobile_btn, 1)  # id 1 = mobile
+            self._view_grp.idToggled.connect(self._on_viewport_toggled)
+
+            h.addWidget(desktop_btn)
+            h.addWidget(self._mobile_btn)
+
             h.addStretch()
+            h.setSpacing(6)
 
             self._status_lbl = QLabel()
             self._status_lbl.setStyleSheet("color:#888; font-size:10px;")
@@ -467,10 +541,11 @@ class WebViewWidget(QWidget):
 
             lay.addWidget(bar)
 
-            # ── Off-the-record profile + interceptor ──────────────────────
-            self._profile = QWebEngineProfile()          # off-the-record (no disk cache)
+            # ── Profile + interceptor ─────────────────────────────────────
+            self._profile = QWebEngineProfile()   # off-the-record (no disk cache)
             self._interceptor = _Interceptor(self._profile)
             self._profile.setUrlRequestInterceptor(self._interceptor)
+            self._profile.setHttpUserAgent(self._DESKTOP_UA)
 
             self._page = QWebEnginePage(self._profile, self)
             self._web = QWebEngineView()
@@ -493,10 +568,38 @@ class WebViewWidget(QWidget):
             lay.addWidget(self._edit)
             self._mode = "text"
 
+    # ── static helper ─────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _set_viewport(html: str, width: int) -> str:
+        """Insert or replace <meta name="viewport"> with the given pixel width."""
+        tag = f'<meta name="viewport" content="width={width}, initial-scale=1">'
+        # Replace an existing viewport meta
+        replaced, n = re.subn(
+            r'<meta\s[^>]*name=["\']viewport["\'][^>]*/?>',
+            tag, html, flags=re.IGNORECASE,
+        )
+        if n:
+            return replaced
+        # Inject right after <head …>
+        m = re.search(r'<head[^>]*>', html, re.IGNORECASE)
+        if m:
+            return html[:m.end()] + "\n" + tag + html[m.end():]
+        # No <head> — prepend
+        return tag + "\n" + html
+
     # ── private slots ─────────────────────────────────────────────────────────
 
     def _on_block_toggled(self, checked: bool):
         self._interceptor.set_block(checked)
+        self._reload()
+
+    def _on_viewport_toggled(self, btn_id: int, checked: bool):
+        if not checked:
+            return
+        self._is_mobile = (btn_id == 1)
+        ua = self._MOBILE_UA if self._is_mobile else self._DESKTOP_UA
+        self._profile.setHttpUserAgent(ua)
         self._reload()
 
     def _reload(self):
@@ -504,28 +607,35 @@ class WebViewWidget(QWidget):
             self._render(self._body, self._headers)
 
     def _render(self, body: bytes, headers: dict):
-        ct = _ct_base(headers)
+        ct   = _ct_base(headers)
         text = _decode_body(body, headers)
+        vp_w = self._MOBILE_W if self._is_mobile else self._DESKTOP_W
+
         if "html" in ct or (text or "").lstrip().startswith("<"):
-            self._web.setHtml(text or "")
+            html = self._set_viewport(text or "", vp_w)
+            self._web.setHtml(html)
         else:
             self._web.setContent(body or b"", ct or "text/plain")
-        self._status_lbl.setText(f"렌더링 중…  ({len(body):,} bytes)")
+
+        vp_label = f"📱 {vp_w}px" if self._is_mobile else f"🖥 {vp_w}px"
+        self._status_lbl.setText(f"렌더링 중…  {vp_label}  ({len(body):,} bytes)")
 
     def _on_load_finished(self, ok: bool):
-        ct = _ct_base(self._headers)
-        blocked = "  ·  외부 차단 중" if (
+        ct      = _ct_base(self._headers)
+        blocked = "  ·  차단 중" if (
             self._block_chk and self._block_chk.isChecked()
         ) else ""
+        vp_label = f"📱 {self._MOBILE_W}px" if self._is_mobile else f"🖥 {self._DESKTOP_W}px"
         icon = "✓" if ok else "✗"
         self._status_lbl.setText(
-            f"{icon}  {ct or 'text/html'}  ·  {len(self._body):,} bytes{blocked}"
+            f"{icon}  {ct or 'text/html'}  ·  {vp_label}"
+            f"  ·  {len(self._body):,} bytes{blocked}"
         )
 
     # ── public ────────────────────────────────────────────────────────────────
 
     def show_body(self, body: bytes, headers: dict):
-        self._body = body or b""
+        self._body    = body    or b""
         self._headers = headers or {}
         if self._mode == "web" and self._web is not None:
             self._render(self._body, self._headers)
